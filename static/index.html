@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YT-DLP Studio</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- Main Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-scrollable-content">
+                <div class="brand">
+                    <span class="logo-icon">▲</span>
+                    <h2>YT-DLP Studio</h2>
+                </div>
+                
+                <div class="sidebar-section">
+                    <h3>Video Input</h3>
+                    <div class="url-input-container">
+                        <input type="text" id="video-url" placeholder="https://youtube.com/watch?v=..." autocomplete="off">
+                        <button id="load-video-btn" class="primary-btn">Analyze</button>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>Output Settings</h3>
+                    <label for="save-dir">Save Directory</label>
+                    <div class="directory-input-container">
+                        <input type="text" id="save-dir" placeholder="C:\Users\Downloads">
+                        <span class="folder-icon">📁</span>
+                    </div>
+                    
+                    <label for="download-format">Format Preset</label>
+                    <select id="download-format">
+                        <option value="best">Best Quality Video (MP4/MKV)</option>
+                        <option value="audio">Audio Only (MP3)</option>
+                    </select>
+                </div>
+
+                <div class="sidebar-section action-section">
+                    <button id="quick-download-btn" class="accent-btn" disabled>Quick Download Full Video</button>
+                    <button id="toggle-settings-btn" class="secondary-btn">Advanced Options</button>
+                </div>
+
+                <!-- Settings Pop-over Panel -->
+                <div id="settings-popover" class="popover hidden">
+                    <h3>Advanced Options</h3>
+                    <div class="form-group">
+                        <label for="custom-format">Format Selector</label>
+                        <select id="custom-format">
+                            <option value="best">Best Combined</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="cookie-file">Cookies File Path (Optional)</label>
+                        <input type="text" id="cookie-file" placeholder="C:\path\to\cookies.txt">
+                    </div>
+                    <button id="close-settings-btn" class="close-btn block-btn accent-btn">Done</button>
+                </div>
+            </div>
+
+            <!-- Queue Section -->
+            <div class="sidebar-section queue-section">
+                <div class="queue-header">
+                    <h3>Queue & Downloads</h3>
+                    <span id="active-download-count">0 active</span>
+                </div>
+                <div class="queue-container">
+                    <div id="queue-list" class="queue-cards-list">
+                        <div class="empty-queue-text">Queue is empty</div>
+                    </div>
+                </div>
+                <div class="queue-footer">
+                    <div class="max-speed-control">
+                        <span>Max:</span>
+                        <select id="max-speed-preset">
+                            <option value="unlimited">Unlimited</option>
+                            <option value="10m">10 MB/s</option>
+                            <option value="5m">5 MB/s</option>
+                            <option value="2m">2 MB/s</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Workspace -->
+        <main class="workspace">
+            <div class="workspace-content">
+                <!-- Top Row (Mini Player & Metadata side by side) -->
+                <div class="top-workspace-row">
+                    <!-- Compact Video Window (Left) -->
+                    <div class="mini-player-container">
+                        <div class="player-wrapper">
+                            <div id="player-placeholder" class="player-placeholder">
+                                <div class="placeholder-content">
+                                    <span class="placeholder-icon">🎬</span>
+                                    <p>Paste URL to preview</p>
+                                </div>
+                            </div>
+                            <div id="yt-player" class="hidden"></div>
+                            <video id="local-player" class="hidden"></video>
+                        </div>
+                    </div>
+
+                    <!-- Metadata panel (Right) -->
+                    <div class="metadata-panel">
+                        <div class="video-info-header">
+                            <h1 id="active-video-title">No Video Loaded</h1>
+                        </div>
+                        
+                        <div class="metadata-grid">
+                            <div class="meta-item">
+                                <span class="meta-label">Channel</span>
+                                <span class="meta-val" id="meta-channel">N/A</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-label">Resolution</span>
+                                <span class="meta-val" id="meta-resolution">N/A</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-label">Duration</span>
+                                <span class="meta-val" id="meta-duration">00:00:00</span>
+                            </div>
+                            <div class="meta-item">
+                                <span class="meta-label">Upload Date</span>
+                                <span class="meta-val" id="meta-upload-date">N/A</span>
+                            </div>
+                        </div>
+
+                        <!-- Technical specification cards -->
+                        <div class="specifications-card">
+                            <div class="spec-col">
+                                <div class="spec-row">
+                                    <span class="spec-icon">🎞️</span>
+                                    <div>
+                                        <span class="spec-name">Video</span>
+                                        <span class="spec-desc" id="meta-video-codec">N/A</span>
+                                    </div>
+                                </div>
+                                <div class="spec-row">
+                                    <span class="spec-icon">🔊</span>
+                                    <div>
+                                        <span class="spec-name">Audio</span>
+                                        <span class="spec-desc" id="meta-audio-codec">N/A</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="spec-col">
+                                <div class="spec-row">
+                                    <span class="spec-icon">🎛️</span>
+                                    <div>
+                                        <span class="spec-name">FPS</span>
+                                        <span class="spec-desc" id="meta-fps">N/A</span>
+                                    </div>
+                                </div>
+                                <div class="spec-row">
+                                    <span class="spec-icon">📦</span>
+                                    <div>
+                                        <span class="spec-name">Size</span>
+                                        <span class="spec-desc" id="meta-size">N/A</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Custom Timeline Area -->
+                <div class="timeline-area">
+                    <div class="timeline-header-bar">
+                        <div class="header-left">
+                            <h3>Timeline</h3>
+                            <button id="btn-fit-screen" class="toolbar-btn" title="Fit Timeline to Window">⛶</button>
+                            <div class="zoom-controls">
+                                <span>🔍-</span>
+                                <input type="range" id="timeline-zoom" min="1" max="10" value="1">
+                                <span>🔍+</span>
+                            </div>
+                        </div>
+                        <div class="selection-range-display">
+                            <span>Start <strong id="range-start">00:00:00</strong></span>
+                            <span>End <strong id="range-end">00:00:00</strong></span>
+                            <span>Duration <strong id="range-duration">00:00:00</strong></span>
+                        </div>
+                    </div>
+
+                    <!-- Timeline Scrubber Container -->
+                    <div class="timeline-scroll-wrapper" id="timeline-scroll-wrapper">
+                        <div class="timeline-content" id="timeline-content">
+                            <!-- Ruler ticks, Waveform, regions and playhead are drawn here -->
+                            <canvas id="timeline-canvas" height="80"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Playback controls -->
+                    <div class="playback-controls-container">
+                        <div class="playback-buttons">
+                            <button id="btn-prev-frame" class="icon-btn" title="Previous 1 Second">◀</button>
+                            <button id="btn-play-pause" class="play-btn" title="Play/Pause">▶</button>
+                            <button id="btn-next-frame" class="icon-btn" title="Next 1 Second">▶</button>
+                        </div>
+                        <div id="time-display" class="time-display">00:00:00 / 00:00:00</div>
+                        <div class="playback-volume">
+                            <span class="volume-icon">🔊</span>
+                            <input type="range" id="playback-volume-slider" min="0" max="100" value="100">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tabs & Tables Area -->
+                <div class="editor-tabs-container">
+                    <div class="tab-headers">
+                        <button class="tab-header active" data-tab="tab-regions">Clipping Regions</button>
+                        <button class="tab-header" data-tab="tab-bookmarks">Bookmarks</button>
+                    </div>
+
+                    <div class="tab-contents">
+                        <!-- Clipping Regions Tab -->
+                        <div id="tab-regions" class="tab-content active">
+                            <div class="tab-actions-bar">
+                                <div class="action-buttons-left">
+                                    <button id="add-region-btn" class="secondary-btn" disabled>+ Add Region</button>
+                                    <button id="add-bookmark-btn-alt" class="secondary-btn" disabled>+ Add Key Point</button>
+                                    <button id="btn-remove-selected" class="secondary-btn" disabled>🗑 Remove</button>
+                                    <button id="btn-clear-all" class="secondary-btn" disabled>Clear All</button>
+                                    <button id="ai-generate-cuts-btn" class="secondary-btn sparkle-btn" disabled>✨ AI Generate Cuts</button>
+                                </div>
+                                <button id="export-selected-btn" class="accent-btn" disabled>📥 Export Selected</button>
+                            </div>
+
+                            <div class="table-wrapper">
+                                <table class="clip-regions-table">
+                                    <thead>
+                                        <tr>
+                                            <th width="40px"><input type="checkbox" id="select-all-regions" checked></th>
+                                            <th width="50px">#</th>
+                                            <th>Label</th>
+                                            <th>Start Time</th>
+                                            <th>End Time</th>
+                                            <th>Duration</th>
+                                            <th width="120px">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="regions-list">
+                                        <tr class="empty-row">
+                                            <td colspan="7">No clipping regions defined. Click "+ Add Region" or use AI cuts to start.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Bookmarks Tab -->
+                        <div id="tab-bookmarks" class="tab-content">
+                            <div class="tab-actions-bar">
+                                <button id="add-bookmark-btn" class="secondary-btn" disabled>+ Add Bookmark</button>
+                            </div>
+                            <div class="bookmarks-grid" id="bookmarks-list">
+                                <p class="empty-text">No bookmarks added yet. Tag points of interest on the timeline.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+
+    </div>
+
+    <!-- Load YouTube Iframe API -->
+    <script src="https://www.youtube.com/iframe_api"></script>
+    <script src="app.js"></script>
+</body>
+</html>

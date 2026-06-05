@@ -1,0 +1,26 @@
+name: calm-lovelace
+services:
+  - name: web
+    ports:
+      - port: 8000
+        protocol: http
+    routes:
+      - path: /
+        port: 8000
+    env:
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: "8000"
+      - key: DEFAULT_SAVE_DIR
+        value: /data/downloads
+      - key: APP_CACHE_DIR
+        value: /data/cache
+      - key: APP_TEMP_DIR
+        value: /data/tmp
+      - key: USE_HF_INFERENCE_API
+        value: "true"
+      - key: HF_TOKEN
+        value: ""
+    docker:
+      dockerfile: Dockerfile

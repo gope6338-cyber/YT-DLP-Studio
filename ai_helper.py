@@ -3,9 +3,10 @@ import re
 import json
 import glob
 import tempfile
-import torch
 import gc
-from transformers import AutoTokenizer, AutoModel, pipeline
+import urllib.request
+import urllib.error
+from config import apply_runtime_environment, create_app_config, ensure_runtime_dirs
 
 # Global caching for models
 _embeddings_tokenizer = None
@@ -13,12 +14,54 @@ _embeddings_model = None
 _classifier = None
 _summarizer = None
 
-CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache")
-os.makedirs(CACHE_DIR, exist_ok=True)
+APP_CONFIG = create_app_config()
+apply_runtime_environment(APP_CONFIG)
+ensure_runtime_dirs(APP_CONFIG)
+CACHE_DIR = APP_CONFIG.cache_dir
+
+
+def call_hf_api(url, payload, token=None, retries=5, delay=5):
+    import time
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(req, timeout=90) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            try:
+                err_body = e.read().decode("utf-8")
+                err_data = json.loads(err_body)
+                if "estimated_time" in err_data or "currently loading" in err_data.get("error", ""):
+                    wait_time = min(float(err_data.get("estimated_time", 20.0)), 20.0)
+                    print(f"[HF API] Model loading. Waiting {wait_time}s (attempt {attempt + 1}/{retries})...")
+                    time.sleep(wait_time)
+                    continue
+                if e.code == 429:
+                    print(f"[HF API] Rate limited. Waiting {delay}s...")
+                    time.sleep(delay)
+                    continue
+            except Exception:
+                pass
+            if attempt == retries - 1:
+                raise e
+            time.sleep(delay)
+        except Exception as e:
+            if attempt == retries - 1:
+                raise e
+            time.sleep(delay)
+    raise Exception("API call failed after max retries")
+
 
 def get_embeddings_model():
     global _embeddings_tokenizer, _embeddings_model
     if _embeddings_model is None:
+        from transformers import AutoTokenizer, AutoModel
         model_name = "sentence-transformers/all-MiniLM-L6-v2"
         _embeddings_tokenizer = AutoTokenizer.from_pretrained(model_name)
         _embeddings_model = AutoModel.from_pretrained(model_name)
@@ -27,6 +70,7 @@ def get_embeddings_model():
 def get_classifier():
     global _classifier
     if _classifier is None:
+        from transformers import pipeline
         model_name = "facebook/bart-large-mnli"
         _classifier = pipeline("zero-shot-classification", model=model_name, device=-1)
     return _classifier
@@ -34,17 +78,22 @@ def get_classifier():
 def get_summarizer():
     global _summarizer
     if _summarizer is None:
+        from transformers import pipeline
         model_name = "facebook/bart-large-cnn"
         _summarizer = pipeline("summarization", model=model_name, device=-1)
     return _summarizer
 
 def unload_models():
     global _embeddings_tokenizer, _embeddings_model, _classifier, _summarizer
-    _embeddings_tokenizer = None
-    _embeddings_model = None
-    _classifier = None
-    _summarizer = None
-    gc.collect()
+    if _embeddings_model is not None or _classifier is not None or _summarizer is not None:
+        _embeddings_tokenizer = None
+        _embeddings_model = None
+        _classifier = None
+        _summarizer = None
+        try:
+            gc.collect()
+        except Exception:
+            pass
 
 def time_to_seconds(t_str):
     t_str = t_str.replace(',', '.')
@@ -115,7 +164,7 @@ def download_subtitles(video_url):
     import yt_dlp
     
     # We will download in a temporary directory
-    temp_dir = tempfile.mkdtemp()
+    temp_dir = tempfile.mkdtemp(dir=APP_CONFIG.temp_dir)
     out_tmpl = os.path.join(temp_dir, 'subtitle')
     
     ydl_opts = {
@@ -204,7 +253,17 @@ def chunk_transcript(entries, chunk_duration=60):
         
     return chunks
 
-def get_embedding(text, tokenizer, model):
+def get_embedding(text, tokenizer=None, model=None):
+    if APP_CONFIG.use_hf_inference_api:
+        url = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
+        res = call_hf_api(url, {"inputs": text}, APP_CONFIG.hf_token)
+        if isinstance(res, list):
+            if len(res) > 0 and isinstance(res[0], list):
+                return res[0]
+            return res
+        raise ValueError(f"Unexpected response format from HF API: {res}")
+    
+    import torch
     inputs = tokenizer(text, padding=True, truncation=True, return_tensors="pt")
     with torch.no_grad():
         outputs = model(**inputs)
@@ -241,9 +300,14 @@ def analyze_video(video_url):
     chunks = chunk_transcript(entries, chunk_duration=60)
     
     # Step 3: Load models and analyze chunks
-    tok, model = get_embeddings_model()
-    classifier = get_classifier()
-    summarizer = get_summarizer()
+    if APP_CONFIG.use_hf_inference_api:
+        tok, model = None, None
+        classifier = None
+        summarizer = None
+    else:
+        tok, model = get_embeddings_model()
+        classifier = get_classifier()
+        summarizer = get_summarizer()
     
     # Generate embeddings and scores for each chunk
     candidate_labels = ["highlight insight", "filler chat", "tutorial process"]
@@ -255,10 +319,15 @@ def analyze_video(video_url):
         
         # Run classifier
         try:
-            res = classifier(chunk['text'], candidate_labels=candidate_labels)
+            if APP_CONFIG.use_hf_inference_api:
+                url = "https://api-inference.huggingface.co/models/facebook/bart-large-mnli"
+                res = call_hf_api(url, {"inputs": chunk['text'], "parameters": {"candidate_labels": candidate_labels}}, APP_CONFIG.hf_token)
+            else:
+                res = classifier(chunk['text'], candidate_labels=candidate_labels)
             scores = dict(zip(res['labels'], res['scores']))
             importance = scores.get("highlight insight", 0) + scores.get("tutorial process", 0)
-        except Exception:
+        except Exception as e:
+            print(f"Classifier error: {e}")
             importance = 0.5
             
         chunk['importance'] = importance
@@ -286,8 +355,14 @@ def analyze_video(video_url):
                 
                 # Summarize section
                 try:
-                    summary = summarizer(sec_text, max_length=60, min_length=20, do_sample=False)[0]['summary_text']
-                except Exception:
+                    if APP_CONFIG.use_hf_inference_api:
+                        url = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
+                        res = call_hf_api(url, {"inputs": sec_text, "parameters": {"max_length": 60, "min_length": 20, "do_sample": False}}, APP_CONFIG.hf_token)
+                        summary = res[0]['summary_text']
+                    else:
+                        summary = summarizer(sec_text, max_length=60, min_length=20, do_sample=False)[0]['summary_text']
+                except Exception as e:
+                    print(f"Summarizer error: {e}")
                     summary = sec_text[:100] + "..."
                     
                 sections.append({
@@ -303,8 +378,14 @@ def analyze_video(video_url):
             sec_start = current_section_chunks[0]['start']
             sec_end = current_section_chunks[-1]['end']
             try:
-                summary = summarizer(sec_text, max_length=60, min_length=20, do_sample=False)[0]['summary_text']
-            except Exception:
+                if APP_CONFIG.use_hf_inference_api:
+                    url = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
+                    res = call_hf_api(url, {"inputs": sec_text, "parameters": {"max_length": 60, "min_length": 20, "do_sample": False}}, APP_CONFIG.hf_token)
+                    summary = res[0]['summary_text']
+                else:
+                    summary = summarizer(sec_text, max_length=60, min_length=20, do_sample=False)[0]['summary_text']
+            except Exception as e:
+                print(f"Summarizer error: {e}")
                 summary = sec_text[:100] + "..."
             sections.append({
                 'start': sec_start,
@@ -350,7 +431,9 @@ def query_transcript(video_url, query_text):
     if not chunks:
         return []
         
-    tok, model = get_embeddings_model()
+    tok, model = None, None
+    if not APP_CONFIG.use_hf_inference_api:
+        tok, model = get_embeddings_model()
     query_emb = get_embedding(query_text, tok, model)
     unload_models()
     

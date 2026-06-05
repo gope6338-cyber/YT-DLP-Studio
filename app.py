@@ -8,13 +8,18 @@ import threading
 import subprocess
 import glob
 import tempfile
+import signal
 from flask import Flask, request, jsonify, Response, send_from_directory
+from config import apply_runtime_environment, create_app_config, ensure_runtime_dirs
 
 app = Flask(__name__)
 
 # Constants
-DEFAULT_SAVE_DIR = os.path.join(os.path.expanduser('~'), 'Downloads')
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+APP_CONFIG = create_app_config()
+DEFAULT_SAVE_DIR = APP_CONFIG.default_save_dir
+apply_runtime_environment(APP_CONFIG)
+ensure_runtime_dirs(APP_CONFIG)
 
 # State
 task_queue = queue.Queue()
@@ -23,8 +28,37 @@ listeners = []  # List of queue.Queue objects for SSE
 active_task = None
 active_task_lock = threading.Lock()
 
-# Import local AI helper
+# Import local AI helper after runtime env is configured
 import ai_helper
+
+
+def _subprocess_creation_kwargs():
+    kwargs = {}
+    if sys.platform == 'win32':
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+    else:
+        kwargs["start_new_session"] = True
+    return kwargs
+
+
+def _run_subprocess(args, **kwargs):
+    return subprocess.Popen(args, **kwargs, **_subprocess_creation_kwargs())
+
+
+def _normalize_save_dir(save_dir):
+    return os.path.abspath(os.path.expanduser(save_dir or DEFAULT_SAVE_DIR))
+
+
+def _clip_temp_dir(task_id):
+    return os.path.join(APP_CONFIG.temp_dir, f"temp_clips_{task_id}")
+
+
+def _render_index_with_config():
+    index_path = os.path.join(STATIC_DIR, "index.html")
+    with open(index_path, "r", encoding="utf-8") as handle:
+        html = handle.read()
+    boot_config = json.dumps({"defaultSaveDir": DEFAULT_SAVE_DIR})
+    return html.replace('"__APP_BOOT_CONFIG__"', boot_config, 1)
 
 def notify_listeners(event_type, data):
     payload = {"type": event_type, "data": data}
@@ -56,10 +90,14 @@ def parse_ytdlp_progress(line):
 
 def kill_process_tree(pid):
     """
-    Forcefully terminates a process group on Windows using taskkill.
+    Forcefully terminates a subprocess tree on current platform.
     """
     try:
-        subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, check=True)
+        if sys.platform == 'win32':
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, check=True)
+        else:
+            process_group_id = os.getpgid(pid)
+            os.killpg(process_group_id, signal.SIGTERM)
     except Exception as e:
         print(f"Error killing process {pid}: {e}")
 
@@ -75,7 +113,7 @@ def run_download_process(task):
     # Output template: title.ext
     out_tmpl = os.path.join(save_dir, '%(title)s.%(ext)s')
     
-    args = ["yt-dlp", "--no-playlist"]
+    args = [APP_CONFIG.yt_dlp_bin, "--no-playlist"]
     
     if fmt == 'audio':
         args += ["-f", "ba", "-x", "--audio-format", "mp3"]
@@ -91,13 +129,12 @@ def run_download_process(task):
     try:
         # Spawn yt-dlp on Windows with flags to allow group killing if needed
         # We redirect stderr to stdout so we can capture all messages
-        p = subprocess.Popen(
+        p = _run_subprocess(
             args,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            bufsize=1,
-            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+            bufsize=1
         )
         
         update_task(task_id, process=p)
@@ -155,21 +192,20 @@ def run_clip_export(task):
     
     # To clip a video, we first download the full best quality video to a temp file,
     # then clip it into multiple parts, and then delete the temp full file.
-    temp_dir = os.path.join(save_dir, f"temp_clips_{task_id}")
+    temp_dir = _clip_temp_dir(task_id)
     os.makedirs(temp_dir, exist_ok=True)
     temp_full_path = os.path.join(temp_dir, f"full_{task_id}.mp4")
     
     # Download full video temporarily
-    dl_args = ["yt-dlp", "--no-playlist", "-f", "mp4/best", "-o", temp_full_path, url]
+    dl_args = [APP_CONFIG.yt_dlp_bin, "--no-playlist", "-f", "mp4/best", "-o", temp_full_path, url]
     
     try:
-        p_dl = subprocess.Popen(
+        p_dl = _run_subprocess(
             dl_args,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            bufsize=1,
-            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+            bufsize=1
         )
         update_task(task_id, process=p_dl)
         
@@ -203,11 +239,11 @@ def run_clip_export(task):
         video_title = "clip"
         try:
             meta_process = subprocess.run(
-                ["yt-dlp", "--get-title", url],
+                [APP_CONFIG.yt_dlp_bin, "--get-title", url],
                 capture_output=True,
                 text=True,
                 check=True,
-                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+                **_subprocess_creation_kwargs()
             )
             video_title = clean_filename(meta_process.stdout.strip())
         except Exception:
@@ -227,7 +263,7 @@ def run_clip_export(task):
             
             # Clip command using ffmpeg (stream copy -ss before -i is extremely fast and accurate)
             ffmpeg_args = [
-                "ffmpeg", "-y",
+                APP_CONFIG.ffmpeg_bin, "-y",
                 "-ss", str(start),
                 "-to", str(end),
                 "-i", temp_full_path,
@@ -235,11 +271,10 @@ def run_clip_export(task):
                 output_path
             ]
             
-            p_ff = subprocess.Popen(
+            p_ff = _run_subprocess(
                 ffmpeg_args,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+                stderr=subprocess.PIPE
             )
             update_task(task_id, process=p_ff)
             p_ff.wait()
@@ -264,7 +299,7 @@ def run_clip_export(task):
         return False, str(e)
 
 def tempfile_temp_dir():
-    return tempfile.gettempdir()
+    return APP_CONFIG.temp_dir
 
 def cleanup_temp_files(full_path, temp_dir):
     try:
@@ -345,7 +380,7 @@ threading.Thread(target=queue_worker, daemon=True).start()
 # Flask Routes
 @app.route('/')
 def index():
-    return send_from_directory(STATIC_DIR, 'index.html')
+    return Response(_render_index_with_config(), mimetype="text/html")
 
 @app.route('/<path:path>')
 def serve_static(path):
@@ -445,7 +480,7 @@ def get_info():
 def enqueue_download():
     data = request.json
     url = data.get('url')
-    save_dir = data.get('save_dir') or DEFAULT_SAVE_DIR
+    save_dir = _normalize_save_dir(data.get('save_dir'))
     fmt = data.get('format') or 'best'
     title = data.get('title') or "YouTube Video"
     
@@ -481,7 +516,7 @@ def enqueue_download():
 def enqueue_clip():
     data = request.json
     url = data.get('url')
-    save_dir = data.get('save_dir') or DEFAULT_SAVE_DIR
+    save_dir = _normalize_save_dir(data.get('save_dir'))
     regions = data.get('regions') # list of {start, end, label, enabled}
     title = data.get('title') or "YouTube Clip"
     
@@ -623,4 +658,4 @@ if __name__ == '__main__':
     # Make sure static directory exists
     os.makedirs(STATIC_DIR, exist_ok=True)
     # Start flask server
-    app.run(host='127.0.0.1', port=5000, debug=False)
+    app.run(host=APP_CONFIG.host, port=APP_CONFIG.port, debug=False)

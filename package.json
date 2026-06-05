@@ -1,0 +1,9 @@
+{
+  "name": "calm-lovelace-deploy-proxy",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Static frontend deployment metadata for calm-lovelace.",
+  "engines": {
+    "node": ">=20"
+  }
+}

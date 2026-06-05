@@ -70,9 +70,10 @@ const rangeDuration = document.getElementById('range-duration');
 
 // Volume element
 const volumeSlider = document.getElementById('playback-volume-slider');
+const appConfig = (window.APP_CONFIG && typeof window.APP_CONFIG === 'object') ? window.APP_CONFIG : {};
 
 // Set Default Save Directory on Load
-saveDirInput.value = "C:\\Users\\LCS\\Downloads";
+saveDirInput.value = appConfig.defaultSaveDir || "C:\\Users\\LCS\\Downloads";
 
 // Event Listeners
 loadVideoBtn.addEventListener('click', loadVideoUrl);

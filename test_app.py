@@ -4,12 +4,43 @@ import tempfile
 import time
 import subprocess
 import sys
+from unittest import mock
 
 # Import functions to test
 from ai_helper import parse_subtitles, chunk_transcript, time_to_seconds
-from app import kill_process_tree, clean_filename
+from app import app, clean_filename, create_app_config, kill_process_tree
 
 class TestYTDLPStudio(unittest.TestCase):
+
+    def test_create_app_config_defaults(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            config = create_app_config()
+        self.assertEqual(config.host, "127.0.0.1")
+        self.assertEqual(config.port, 5000)
+        self.assertTrue(config.default_save_dir.endswith("Downloads"))
+        self.assertTrue(config.cache_dir.endswith(".cache"))
+        self.assertEqual(config.yt_dlp_bin, "yt-dlp")
+        self.assertEqual(config.ffmpeg_bin, "ffmpeg")
+
+    def test_create_app_config_from_environment(self):
+        env = {
+            "HOST": "0.0.0.0",
+            "PORT": "8080",
+            "DEFAULT_SAVE_DIR": "/data/downloads",
+            "APP_CACHE_DIR": "/data/cache",
+            "APP_TEMP_DIR": "/data/tmp",
+            "YT_DLP_BIN": "/usr/local/bin/yt-dlp",
+            "FFMPEG_BIN": "/usr/bin/ffmpeg",
+        }
+        with mock.patch.dict(os.environ, env, clear=True):
+            config = create_app_config()
+        self.assertEqual(config.host, "0.0.0.0")
+        self.assertEqual(config.port, 8080)
+        self.assertEqual(config.default_save_dir, os.path.abspath("/data/downloads"))
+        self.assertEqual(config.cache_dir, os.path.abspath("/data/cache"))
+        self.assertEqual(config.temp_dir, os.path.abspath("/data/tmp"))
+        self.assertEqual(config.yt_dlp_bin, "/usr/local/bin/yt-dlp")
+        self.assertEqual(config.ffmpeg_bin, "/usr/bin/ffmpeg")
 
     def test_time_to_seconds(self):
         self.assertEqual(time_to_seconds("00:01:23.456"), 83.456)
@@ -90,6 +121,143 @@ Second block of subtitles.
         else:
             # Skip for non-windows platforms in general testing (but app targets Windows)
             pass
+
+    def test_kill_process_tree_posix_uses_process_group(self):
+        with mock.patch("app.sys.platform", "linux"), \
+             mock.patch("app.os.getpgid", return_value=123, create=True), \
+             mock.patch("app.os.killpg", create=True) as mock_killpg:
+            kill_process_tree(456)
+        mock_killpg.assert_called_once()
+
+    def test_api_defaults_and_errors(self):
+        client = app.test_client()
+
+        queue_response = client.get("/api/queue")
+        self.assertEqual(queue_response.status_code, 200)
+        self.assertEqual(queue_response.json, [])
+
+        stream_response = client.get("/api/stream")
+        self.assertEqual(stream_response.status_code, 200)
+        self.assertIn("text/event-stream", stream_response.headers["Content-Type"])
+
+        info_response = client.post("/api/info", json={})
+        self.assertEqual(info_response.status_code, 400)
+
+        enqueue_response = client.post("/api/enqueue", json={})
+        self.assertEqual(enqueue_response.status_code, 400)
+
+        clip_response = client.post("/api/clip", json={})
+        self.assertEqual(clip_response.status_code, 400)
+
+        ai_analyze_response = client.post("/api/ai/analyze", json={})
+        self.assertEqual(ai_analyze_response.status_code, 400)
+
+        ai_search_response = client.post("/api/ai/search", json={})
+        self.assertEqual(ai_search_response.status_code, 400)
+
+    def test_create_app_config_hf_inference(self):
+        env = {
+            "USE_HF_INFERENCE_API": "true",
+            "HF_TOKEN": "mock-token-123"
+        }
+        with mock.patch.dict(os.environ, env, clear=True):
+            config = create_app_config()
+        self.assertTrue(config.use_hf_inference_api)
+        self.assertEqual(config.hf_token, "mock-token-123")
+
+    @mock.patch("urllib.request.urlopen")
+    def test_call_hf_api_success(self, mock_urlopen):
+        from ai_helper import call_hf_api
+        
+        mock_response = mock.Mock()
+        mock_response.read.return_value = b'{"result": "success"}'
+        mock_urlopen.return_value.__enter__.return_value = mock_response
+        
+        res = call_hf_api("https://mock-url.com", {"key": "val"}, token="token")
+        self.assertEqual(res, {"result": "success"})
+        mock_urlopen.assert_called_once()
+
+    @mock.patch("urllib.request.urlopen")
+    @mock.patch("time.sleep")
+    def test_call_hf_api_retry_on_loading(self, mock_sleep, mock_urlopen):
+        from ai_helper import call_hf_api
+        import urllib.error
+        
+        err_response = mock.Mock()
+        err_response.read.return_value = b'{"error": "Model currently loading", "estimated_time": 0.5}'
+        mock_err = urllib.error.HTTPError(
+            url="https://mock-url.com",
+            code=503,
+            msg="Service Unavailable",
+            hdrs={},
+            fp=err_response
+        )
+        
+        class MockResponse:
+            def read(self):
+                return b'{"result": "done"}'
+            def __enter__(self):
+                return self
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                pass
+        
+        mock_success_response = MockResponse()
+        mock_urlopen.side_effect = [mock_err, mock_success_response]
+        
+        res = call_hf_api("https://mock-url.com", {"key": "val"})
+        self.assertEqual(res, {"result": "done"})
+        self.assertEqual(mock_sleep.call_count, 1)
+        mock_sleep.assert_called_with(0.5)
+
+    @mock.patch("ai_helper.call_hf_api")
+    @mock.patch("ai_helper.APP_CONFIG")
+    def test_get_embedding_hf_api(self, mock_config, mock_call_api):
+        from ai_helper import get_embedding
+        mock_config.use_hf_inference_api = True
+        mock_config.hf_token = "tok"
+        mock_call_api.return_value = [0.1, 0.2, 0.3]
+        
+        emb = get_embedding("hello")
+        self.assertEqual(emb, [0.1, 0.2, 0.3])
+        mock_call_api.assert_called_once_with(
+            "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2",
+            {"inputs": "hello"},
+            "tok"
+        )
+
+    @mock.patch("ai_helper.download_subtitles")
+    @mock.patch("ai_helper.call_hf_api")
+    @mock.patch("ai_helper.APP_CONFIG")
+    def test_analyze_video_hf_api(self, mock_config, mock_call_api, mock_download):
+        from ai_helper import analyze_video
+        
+        mock_config.use_hf_inference_api = True
+        mock_config.hf_token = "tok"
+        mock_config.temp_dir = tempfile.gettempdir()
+        
+        temp_cache_dir = tempfile.mkdtemp()
+        
+        mock_download.return_value = [
+            {"start": 0.0, "end": 10.0, "text": "Hello world."}
+        ]
+        
+        mock_call_api.side_effect = [
+            [0.1, 0.2],
+            {"labels": ["highlight insight", "filler chat"], "scores": [0.8, 0.2]},
+            [{"summary_text": "A brief summary"}]
+        ]
+        
+        with mock.patch("ai_helper.CACHE_DIR", temp_cache_dir):
+            res = analyze_video("https://youtube.com/watch?v=12345678901")
+            
+        self.assertIn("chunks", res)
+        self.assertIn("sections", res)
+        self.assertEqual(len(res["sections"]), 1)
+        self.assertEqual(res["sections"][0]["label"], "A brief summary")
+        
+        for f in os.listdir(temp_cache_dir):
+            os.remove(os.path.join(temp_cache_dir, f))
+        os.rmdir(temp_cache_dir)
 
 if __name__ == '__main__':
     unittest.main()

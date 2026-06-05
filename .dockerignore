@@ -1,0 +1,9 @@
+.git
+.gitignore
+__pycache__/
+.cache/
+.tmp/
+*.pyc
+*.pyo
+*.pyd
+*.log

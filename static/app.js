@@ -548,21 +548,21 @@ function drawTimelineRaw() {
         // Highlight active or standard selection
         const isActive = (idx === activeRegionIndex);
         
-        ctx.fillStyle = region.enabled ? 'rgba(255, 107, 0, 0.15)' : 'rgba(92, 104, 122, 0.1)';
+        ctx.fillStyle = region.enabled ? 'rgba(79, 195, 247, 0.12)' : 'rgba(61, 79, 110, 0.1)';
         ctx.fillRect(xStart, 20, xEnd - xStart, 45);
         
-        ctx.strokeStyle = region.enabled ? (isActive ? '#ff8533' : '#ff6b00') : '#5c687a';
-        ctx.lineWidth = isActive ? 3 : 2;
+        ctx.strokeStyle = region.enabled ? (isActive ? '#80d8ff' : '#4fc3f7') : '#3d4f6e';
+        ctx.lineWidth = isActive ? 2.5 : 1.5;
         ctx.strokeRect(xStart, 20, xEnd - xStart, 45);
         
-        // Draw boundaries white drag lines
-        ctx.fillStyle = '#ffffff';
+        // Draw boundaries drag lines
+        ctx.fillStyle = '#80d8ff';
         ctx.fillRect(xStart - 1, 20, 3, 45);
         ctx.fillRect(xEnd - 2, 20, 3, 45);
         
-        // Draw black handles timestamps above region boundaries
+        // Draw handles above region boundaries
         if (isActive || region.enabled) {
-            ctx.fillStyle = '#ff6b00';
+            ctx.fillStyle = '#4fc3f7';
             ctx.beginPath();
             ctx.arc(xStart, 20, 4, 0, Math.PI * 2);
             ctx.arc(xEnd, 20, 4, 0, Math.PI * 2);
@@ -578,7 +578,7 @@ function drawTimelineRaw() {
     // 4. Draw Bookmarks
     bookmarks.forEach(bm => {
         const x = timeToPixel(bm.time);
-        ctx.fillStyle = '#ff6b00';
+        ctx.fillStyle = '#4fc3f7';
         ctx.beginPath();
         ctx.moveTo(x, 12);
         ctx.lineTo(x + 4, 18);
@@ -590,21 +590,21 @@ function drawTimelineRaw() {
     
     // 5. Draw Playhead scrubber line
     const playheadX = timeToPixel(currentTime);
-    ctx.strokeStyle = '#e74c3c';
+    ctx.strokeStyle = '#90caf9';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(playheadX, 0);
     ctx.lineTo(playheadX, h);
     ctx.stroke();
     
-    ctx.fillStyle = '#e74c3c';
+    ctx.fillStyle = '#4fc3f7';
     ctx.beginPath();
     ctx.arc(playheadX, 8, 4, 0, Math.PI * 2);
     ctx.fill();
 }
 
 function drawAudioWaveform(ctx, w, h) {
-    ctx.strokeStyle = 'rgba(28, 32, 45, 0.4)';
+    ctx.strokeStyle = 'rgba(26, 40, 72, 0.6)';
     ctx.lineWidth = 1;
     const midY = h / 2 + 10;
     
@@ -612,6 +612,12 @@ function drawAudioWaveform(ctx, w, h) {
     for (let x = 0; x < w; x += 3) {
         const amp = (Math.sin(x * 0.03) * 0.35 + Math.sin(x * 0.08) * 0.25 + Math.cos(x * 0.005) * 0.4);
         const height = Math.abs(amp) * 22;
+        // Subtle blue gradient bars
+        const gradient = ctx.createLinearGradient(x, midY - height, x, midY + height);
+        gradient.addColorStop(0, 'rgba(79,195,247,0.15)');
+        gradient.addColorStop(0.5, 'rgba(79,195,247,0.08)');
+        gradient.addColorStop(1, 'rgba(79,195,247,0.15)');
+        ctx.strokeStyle = gradient;
         ctx.beginPath();
         ctx.moveTo(x, midY - height);
         ctx.lineTo(x, midY + height);
@@ -1017,8 +1023,8 @@ function setStatusText(msg, type) {
     if (!el) return;
     el.textContent = msg;
     if (dot) {
-        dot.style.background = type === 'error' ? 'var(--c-red)' : type === 'busy' ? 'var(--c-orange)' : 'var(--c-green)';
-        dot.style.boxShadow  = type === 'error' ? '0 0 6px var(--c-red)' : type === 'busy' ? '0 0 6px var(--c-orange)' : '0 0 6px var(--c-green)';
+        dot.style.background = type === 'error' ? '#ef5350' : type === 'busy' ? '#ffa726' : '#4fc3f7';
+        dot.style.boxShadow  = type === 'error' ? '0 0 6px #ef5350' : type === 'busy' ? '0 0 6px #ffa726' : '0 0 8px rgba(79,195,247,.8)';
     }
 }
 

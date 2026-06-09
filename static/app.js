@@ -115,7 +115,19 @@ closeSettingsBtn.addEventListener('click', () => settingsPopover.classList.add('
 volumeSlider.addEventListener('input', (e) => {
     const vol = parseInt(e.target.value);
     setVolume(vol);
+    // Sync timeline volume slider
+    const tlVol = document.getElementById('tl-volume');
+    if (tlVol) tlVol.value = vol;
 });
+
+const tlVolumeSlider = document.getElementById('tl-volume');
+if (tlVolumeSlider) {
+    tlVolumeSlider.addEventListener('input', (e) => {
+        const vol = parseInt(e.target.value);
+        setVolume(vol);
+        if (volumeSlider) volumeSlider.value = vol;
+    });
+}
 
 // Timeline Canvas Event Listeners for dragging and scrubbing
 timelineCanvas.addEventListener('mousedown', handleTimelineMouseDown);
@@ -156,10 +168,9 @@ sse.onmessage = function(event) {
 
 function renderQueue(tasks) {
     if (tasks.length === 0) {
-        queueList.innerHTML = `
-            <div class="empty-queue-text">Queue is empty</div>
-        `;
+        queueList.innerHTML = `<div class="empty-queue-msg">Queue is empty</div>`;
         document.getElementById('active-download-count').innerText = "0 active";
+        document.getElementById('nav-queue-count').innerText = "0";
         return;
     }
     queueList.innerHTML = '';
@@ -171,6 +182,7 @@ function renderQueue(tasks) {
         queueList.appendChild(createQueueCard(task));
     });
     document.getElementById('active-download-count').innerText = `${activeCount} active`;
+    document.getElementById('nav-queue-count').innerText = String(activeCount);
 }
 
 function createQueueCard(task) {
@@ -333,11 +345,19 @@ function onPlayerReady(event) {
 function onPlayerStateChange(event) {
     if (event.data === YT.PlayerState.PLAYING) {
         isPlaying = true;
-        playPauseBtn.innerText = "⏸";
+        setPlayPauseIcon(true);
     } else {
         isPlaying = false;
-        playPauseBtn.innerText = "▶";
+        setPlayPauseIcon(false);
     }
+}
+
+function setPlayPauseIcon(playing) {
+    const pauseSVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
+    const playSVG  = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>`;
+    if (playPauseBtn) playPauseBtn.innerHTML = playing ? pauseSVG : playSVG;
+    const tlBtn = document.getElementById('btn-play-pause-tl');
+    if (tlBtn) tlBtn.innerHTML = playing ? pauseSVG : playSVG;
 }
 
 function togglePlayback() {
@@ -501,9 +521,9 @@ function drawTimelineRaw() {
     drawAudioWaveform(ctx, w, h);
     
     // 2. Draw Ticks & ruler
-    ctx.fillStyle = '#5c687a';
-    ctx.font = '9px Space Grotesk';
-    ctx.strokeStyle = '#1c202d';
+    ctx.fillStyle = '#505a6d';
+    ctx.font = '9px Inter, sans-serif';
+    ctx.strokeStyle = '#232736';
     ctx.lineWidth = 1;
     
     const secStep = Math.max(1, Math.round(videoDuration / (w / 120)));
@@ -551,7 +571,7 @@ function drawTimelineRaw() {
         
         // Text name tag
         ctx.fillStyle = '#ffffff';
-        ctx.font = '11px Outfit';
+        ctx.font = '11px Inter, sans-serif';
         ctx.fillText(region.label || `Segment ${idx+1}`, xStart + 10, 38);
     });
     
@@ -756,7 +776,7 @@ function updateRegionsTable() {
     clipRegions.forEach((region, index) => {
         const tr = document.createElement('tr');
         if (!region.enabled) tr.className = 'disabled-row';
-        if (index === activeRegionIndex) tr.style.backgroundColor = 'var(--hover-dark)';
+        if (index === activeRegionIndex) tr.style.backgroundColor = 'var(--c-hover)';
         
         const durationStr = formatTimeHHMMSS(region.end - region.start);
         
@@ -959,13 +979,64 @@ function exportSelectedClips() {
     });
 }
 
-// AI Transcript Cuts Suggestion
+// ─── Right Panel Helpers ──────────────────────────────────────────────────
+
+// Format Pill Selection
+document.querySelectorAll('.pill-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    });
+});
+
+// Apply Export Preset
+window.applyPreset = function(name) {
+    const presetMap = {
+        short:   { label: 'Short (9:16) 1080×1920', format: 'best' },
+        reels:   { label: 'Reels (9:16) 1080×1920', format: 'best' },
+        tiktok:  { label: 'TikTok (9:16) 1080×1920', format: 'best' },
+        podcast: { label: 'Podcast (16:9) 1920×1080', format: 'best' }
+    };
+    const preset = presetMap[name];
+    if (!preset) return;
+    setStatusText(`Preset applied: ${preset.label}`);
+};
+
+// Settings toggle chevron
+if (toggleSettingsBtn && settingsPopover) {
+    toggleSettingsBtn.addEventListener('click', () => {
+        const open = !settingsPopover.classList.contains('hidden');
+        toggleSettingsBtn.classList.toggle('open', !open);
+    });
+}
+
+// Status bar helper
+function setStatusText(msg, type) {
+    const el = document.getElementById('status-text');
+    const dot = document.querySelector('.status-dot');
+    if (!el) return;
+    el.textContent = msg;
+    if (dot) {
+        dot.style.background = type === 'error' ? 'var(--c-red)' : type === 'busy' ? 'var(--c-orange)' : 'var(--c-green)';
+        dot.style.boxShadow  = type === 'error' ? '0 0 6px var(--c-red)' : type === 'busy' ? '0 0 6px var(--c-orange)' : '0 0 6px var(--c-green)';
+    }
+}
+
+// Init status bar
+setStatusText('Ready');
+
+// ─── AI Transcript Cuts Suggestion ──────────────────────────────────────
 function generateCutsViaAI() {
     const url = videoUrlInput.value.trim();
     if (!url) return;
     
     aiGenerateCutsBtn.disabled = true;
-    aiGenerateCutsBtn.innerText = "Analyzing Transcript...";
+    aiGenerateCutsBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Analyzing...`;
+    if (!document.getElementById('spin-keyframe')) {
+        const s = document.createElement('style'); s.id='spin-keyframe';
+        s.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
+        document.head.appendChild(s);
+    }
     
     fetch('/api/ai/analyze', {
         method: 'POST',
@@ -975,7 +1046,7 @@ function generateCutsViaAI() {
     .then(res => res.json())
     .then(data => {
         aiGenerateCutsBtn.disabled = false;
-        aiGenerateCutsBtn.innerText = "✨ AI Generate Cuts";
+        aiGenerateCutsBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg> Generate AI Cuts`;
         
         if (data.error) {
             alert(`AI Analysis failed: ${data.error}`);
@@ -1007,7 +1078,7 @@ function generateCutsViaAI() {
     })
     .catch(err => {
         aiGenerateCutsBtn.disabled = false;
-        aiGenerateCutsBtn.innerText = "✨ AI Generate Cuts";
+        aiGenerateCutsBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg> Generate AI Cuts`;
         alert("AI Service is temporarily unavailable.");
     });
 }

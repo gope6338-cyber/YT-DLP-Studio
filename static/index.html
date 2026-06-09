@@ -3,281 +3,466 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YT-DLP Studio</title>
+    <title>YT-DLP Studio v2.0</title>
+    <meta name="description" content="Professional YouTube download and video clipping studio with AI-powered cut suggestions.">
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body class="dark-theme">
-    <div class="app-container">
-        <!-- Main Sidebar -->
-        <aside class="sidebar">
-            <div class="sidebar-scrollable-content">
-                <div class="brand">
-                    <span class="logo-icon">▲</span>
-                    <h2>YT-DLP Studio</h2>
-                </div>
-                
-                <div class="sidebar-section">
-                    <h3>Video Input</h3>
-                    <div class="url-input-container">
-                        <input type="text" id="video-url" placeholder="https://youtube.com/watch?v=..." autocomplete="off">
-                        <button id="load-video-btn" class="primary-btn">Analyze</button>
-                    </div>
-                </div>
 
-                <div class="sidebar-section">
-                    <h3>Output Settings</h3>
-                    <label for="save-dir">Save Directory</label>
-                    <div class="directory-input-container">
-                        <input type="text" id="save-dir" placeholder="C:\Users\Downloads">
-                        <span class="folder-icon">📁</span>
-                    </div>
-                    
-                    <label for="download-format">Format Preset</label>
-                    <select id="download-format">
-                        <option value="best">Best Quality Video (MP4/MKV)</option>
-                        <option value="audio">Audio Only (MP3)</option>
-                    </select>
-                </div>
+<!-- TOP NAV BAR -->
+<header class="topnav">
+    <div class="topnav-left">
+        <div class="brand-logo">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <polygon points="5,3 19,12 5,21" fill="#ff6b00"/>
+            </svg>
+            <span class="brand-name">YT-DLP Studio</span>
+            <span class="brand-version">v2.0.0</span>
+        </div>
+    </div>
+    <div class="topnav-center">
+        <div class="global-search">
+            <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input type="text" id="global-search-input" placeholder="Search videos, clips, exports..." autocomplete="off">
+            <span class="search-kbd">Ctrl K</span>
+        </div>
+    </div>
+    <div class="topnav-right">
+        <button class="nav-icon-btn" id="nav-downloads-btn" title="Downloads">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span class="nav-badge" id="nav-queue-count">0</span>
+        </button>
+        <button class="nav-icon-btn" title="Settings" id="settings-nav-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <div class="nav-divider"></div>
+        <div class="nav-avatar" title="User">LCS</div>
+    </div>
+</header>
 
-                <div class="sidebar-section action-section">
-                    <button id="quick-download-btn" class="accent-btn" disabled>Quick Download Full Video</button>
-                    <button id="toggle-settings-btn" class="secondary-btn">Advanced Options</button>
-                </div>
+<!-- MAIN LAYOUT: Left Panel | Center Workspace | Right Panel -->
+<div class="app-layout">
 
-                <!-- Settings Pop-over Panel -->
-                <div id="settings-popover" class="popover hidden">
-                    <h3>Advanced Options</h3>
-                    <div class="form-group">
-                        <label for="custom-format">Format Selector</label>
+    <!-- LEFT PANEL: Input + Output Settings + Queue -->
+    <aside class="left-panel" id="left-panel">
+
+        <!-- Input Section -->
+        <section class="panel-section">
+            <div class="section-label">INPUT</div>
+            <div class="input-field-group">
+                <div class="field-label">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                    Video Input
+                </div>
+                <div class="url-row">
+                    <input type="text" id="video-url" placeholder="https://youtube.com/watch?v=..." autocomplete="off" spellcheck="false">
+                </div>
+                <button class="btn-analyze" id="load-video-btn">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                    Analyze
+                </button>
+                <p class="hint-text">or drag &amp; drop a YouTube URL here</p>
+            </div>
+        </section>
+
+        <div class="panel-divider"></div>
+
+        <!-- Output Settings -->
+        <section class="panel-section">
+            <div class="section-label">OUTPUT SETTINGS</div>
+
+            <div class="field-group">
+                <div class="field-label">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                    Save Directory
+                </div>
+                <div class="dir-input-row">
+                    <input type="text" id="save-dir" placeholder="C:\Users\Downloads">
+                    <button class="dir-browse-btn" title="Browse">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="field-group">
+                <div class="field-label">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                    Format Preset
+                </div>
+                <select id="download-format">
+                    <option value="best">Best Quality Video (MP4/MKV)</option>
+                    <option value="audio">Audio Only (MP3)</option>
+                </select>
+            </div>
+
+            <div class="field-group">
+                <button class="btn-settings-toggle" id="toggle-settings-btn">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                    More Options
+                    <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6,9 12,15 18,9"/></svg>
+                </button>
+                <div id="settings-popover" class="settings-expand hidden">
+                    <div class="field-group">
+                        <div class="field-label">Format Selector</div>
                         <select id="custom-format">
                             <option value="best">Best Combined</option>
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label for="cookie-file">Cookies File Path (Optional)</label>
+                    <div class="field-group">
+                        <div class="field-label">Cookies File (Optional)</div>
                         <input type="text" id="cookie-file" placeholder="C:\path\to\cookies.txt">
                     </div>
-                    <button id="close-settings-btn" class="close-btn block-btn accent-btn">Done</button>
+                    <button class="btn-close-settings" id="close-settings-btn">Done</button>
                 </div>
             </div>
 
-            <!-- Queue Section -->
-            <div class="sidebar-section queue-section">
-                <div class="queue-header">
-                    <h3>Queue & Downloads</h3>
-                    <span id="active-download-count">0 active</span>
+            <button class="btn-download-full" id="quick-download-btn" disabled>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download Full Video
+            </button>
+        </section>
+
+        <div class="panel-divider"></div>
+
+        <!-- Queue -->
+        <section class="panel-section queue-panel">
+            <div class="queue-header-row">
+                <div class="section-label" style="margin-bottom:0">QUEUE &amp; DOWNLOADS</div>
+                <span class="active-count-badge" id="active-download-count">0 active</span>
+            </div>
+            <div class="queue-list-wrap" id="queue-list-wrap">
+                <div id="queue-list" class="queue-cards-list">
+                    <div class="empty-queue-msg">Queue is empty</div>
                 </div>
-                <div class="queue-container">
-                    <div id="queue-list" class="queue-cards-list">
-                        <div class="empty-queue-text">Queue is empty</div>
+            </div>
+            <div class="queue-footer">
+                <span class="speed-label">Max:</span>
+                <select id="max-speed-preset" class="speed-select">
+                    <option value="unlimited">Unlimited</option>
+                    <option value="10m">10 MB/s</option>
+                    <option value="5m">5 MB/s</option>
+                    <option value="2m">2 MB/s</option>
+                </select>
+            </div>
+        </section>
+    </aside>
+
+    <!-- CENTER WORKSPACE -->
+    <main class="workspace">
+
+        <!-- Preview + Video Info row -->
+        <div class="workspace-top-row">
+            <!-- Preview -->
+            <div class="preview-card">
+                <div class="preview-header">Preview</div>
+                <div class="player-wrap">
+                    <div id="player-placeholder" class="player-placeholder">
+                        <div class="placeholder-inner">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.3"><rect x="2" y="3" width="20" height="14" rx="2"/><polygon points="10,8 16,11 10,14" fill="currentColor" stroke="none"/><path d="M8 21h8M12 17v4"/></svg>
+                            <p>Paste URL to preview</p>
+                        </div>
                     </div>
+                    <div id="yt-player" class="hidden"></div>
+                    <video id="local-player" class="hidden"></video>
                 </div>
-                <div class="queue-footer">
-                    <div class="max-speed-control">
-                        <span>Max:</span>
-                        <select id="max-speed-preset">
-                            <option value="unlimited">Unlimited</option>
-                            <option value="10m">10 MB/s</option>
-                            <option value="5m">5 MB/s</option>
-                            <option value="2m">2 MB/s</option>
-                        </select>
+                <div class="preview-controls">
+                    <div class="ctrl-group">
+                        <button id="btn-prev-frame" class="ctrl-btn" title="Prev 1s">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="19,20 9,12 19,4"/><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2"/></svg>
+                        </button>
+                        <button id="btn-play-pause" class="ctrl-play">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+                        </button>
+                        <button id="btn-next-frame" class="ctrl-btn" title="Next 1s">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,20 15,12 5,4"/><line x1="19" y1="19" x2="19" y2="5" stroke="currentColor" stroke-width="2"/></svg>
+                        </button>
+                    </div>
+                    <div id="time-display" class="time-display">00:00:00 / 00:00:00</div>
+                    <div class="volume-ctrl">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11,5 6,9 2,9 2,15 6,15 11,19 11,5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                        <input type="range" id="playback-volume-slider" min="0" max="100" value="100">
                     </div>
                 </div>
             </div>
-        </aside>
 
-        <!-- Main Workspace -->
-        <main class="workspace">
-            <div class="workspace-content">
-                <!-- Top Row (Mini Player & Metadata side by side) -->
-                <div class="top-workspace-row">
-                    <!-- Compact Video Window (Left) -->
-                    <div class="mini-player-container">
-                        <div class="player-wrapper">
-                            <div id="player-placeholder" class="player-placeholder">
-                                <div class="placeholder-content">
-                                    <span class="placeholder-icon">🎬</span>
-                                    <p>Paste URL to preview</p>
-                                </div>
-                            </div>
-                            <div id="yt-player" class="hidden"></div>
-                            <video id="local-player" class="hidden"></video>
-                        </div>
+            <!-- Video Info -->
+            <div class="video-info-card">
+                <div class="preview-header">Video Information</div>
+                <h1 id="active-video-title" class="video-title">No Video Loaded</h1>
+                <div class="meta-grid">
+                    <div class="meta-cell">
+                        <div class="meta-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+                        <div><div class="meta-lbl">Channel</div><div class="meta-val" id="meta-channel">—</div></div>
                     </div>
-
-                    <!-- Metadata panel (Right) -->
-                    <div class="metadata-panel">
-                        <div class="video-info-header">
-                            <h1 id="active-video-title">No Video Loaded</h1>
-                        </div>
-                        
-                        <div class="metadata-grid">
-                            <div class="meta-item">
-                                <span class="meta-label">Channel</span>
-                                <span class="meta-val" id="meta-channel">N/A</span>
-                            </div>
-                            <div class="meta-item">
-                                <span class="meta-label">Resolution</span>
-                                <span class="meta-val" id="meta-resolution">N/A</span>
-                            </div>
-                            <div class="meta-item">
-                                <span class="meta-label">Duration</span>
-                                <span class="meta-val" id="meta-duration">00:00:00</span>
-                            </div>
-                            <div class="meta-item">
-                                <span class="meta-label">Upload Date</span>
-                                <span class="meta-val" id="meta-upload-date">N/A</span>
-                            </div>
-                        </div>
-
-                        <!-- Technical specification cards -->
-                        <div class="specifications-card">
-                            <div class="spec-col">
-                                <div class="spec-row">
-                                    <span class="spec-icon">🎞️</span>
-                                    <div>
-                                        <span class="spec-name">Video</span>
-                                        <span class="spec-desc" id="meta-video-codec">N/A</span>
-                                    </div>
-                                </div>
-                                <div class="spec-row">
-                                    <span class="spec-icon">🔊</span>
-                                    <div>
-                                        <span class="spec-name">Audio</span>
-                                        <span class="spec-desc" id="meta-audio-codec">N/A</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="spec-col">
-                                <div class="spec-row">
-                                    <span class="spec-icon">🎛️</span>
-                                    <div>
-                                        <span class="spec-name">FPS</span>
-                                        <span class="spec-desc" id="meta-fps">N/A</span>
-                                    </div>
-                                </div>
-                                <div class="spec-row">
-                                    <span class="spec-icon">📦</span>
-                                    <div>
-                                        <span class="spec-name">Size</span>
-                                        <span class="spec-desc" id="meta-size">N/A</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                    <div class="meta-cell">
+                        <div class="meta-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div>
+                        <div><div class="meta-lbl">Upload Date</div><div class="meta-val" id="meta-upload-date">—</div></div>
                     </div>
-                </div>
-
-                <!-- Custom Timeline Area -->
-                <div class="timeline-area">
-                    <div class="timeline-header-bar">
-                        <div class="header-left">
-                            <h3>Timeline</h3>
-                            <button id="btn-fit-screen" class="toolbar-btn" title="Fit Timeline to Window">⛶</button>
-                            <div class="zoom-controls">
-                                <span>🔍-</span>
-                                <input type="range" id="timeline-zoom" min="1" max="10" value="1">
-                                <span>🔍+</span>
-                            </div>
-                        </div>
-                        <div class="selection-range-display">
-                            <span>Start <strong id="range-start">00:00:00</strong></span>
-                            <span>End <strong id="range-end">00:00:00</strong></span>
-                            <span>Duration <strong id="range-duration">00:00:00</strong></span>
-                        </div>
+                    <div class="meta-cell">
+                        <div class="meta-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/></svg></div>
+                        <div><div class="meta-lbl">Resolution</div><div class="meta-val" id="meta-resolution">—</div></div>
                     </div>
-
-                    <!-- Timeline Scrubber Container -->
-                    <div class="timeline-scroll-wrapper" id="timeline-scroll-wrapper">
-                        <div class="timeline-content" id="timeline-content">
-                            <!-- Ruler ticks, Waveform, regions and playhead are drawn here -->
-                            <canvas id="timeline-canvas" height="80"></canvas>
-                        </div>
+                    <div class="meta-cell">
+                        <div class="meta-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg></div>
+                        <div><div class="meta-lbl">Duration</div><div class="meta-val" id="meta-duration">—</div></div>
                     </div>
-
-                    <!-- Playback controls -->
-                    <div class="playback-controls-container">
-                        <div class="playback-buttons">
-                            <button id="btn-prev-frame" class="icon-btn" title="Previous 1 Second">◀</button>
-                            <button id="btn-play-pause" class="play-btn" title="Play/Pause">▶</button>
-                            <button id="btn-next-frame" class="icon-btn" title="Next 1 Second">▶</button>
-                        </div>
-                        <div id="time-display" class="time-display">00:00:00 / 00:00:00</div>
-                        <div class="playback-volume">
-                            <span class="volume-icon">🔊</span>
-                            <input type="range" id="playback-volume-slider" min="0" max="100" value="100">
-                        </div>
+                    <div class="meta-cell">
+                        <div class="meta-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg></div>
+                        <div><div class="meta-lbl">FPS</div><div class="meta-val" id="meta-fps">—</div></div>
                     </div>
-                </div>
-
-                <!-- Tabs & Tables Area -->
-                <div class="editor-tabs-container">
-                    <div class="tab-headers">
-                        <button class="tab-header active" data-tab="tab-regions">Clipping Regions</button>
-                        <button class="tab-header" data-tab="tab-bookmarks">Bookmarks</button>
+                    <div class="meta-cell">
+                        <div class="meta-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>
+                        <div><div class="meta-lbl">Video Codec</div><div class="meta-val" id="meta-video-codec">—</div></div>
                     </div>
-
-                    <div class="tab-contents">
-                        <!-- Clipping Regions Tab -->
-                        <div id="tab-regions" class="tab-content active">
-                            <div class="tab-actions-bar">
-                                <div class="action-buttons-left">
-                                    <button id="add-region-btn" class="secondary-btn" disabled>+ Add Region</button>
-                                    <button id="add-bookmark-btn-alt" class="secondary-btn" disabled>+ Add Key Point</button>
-                                    <button id="btn-remove-selected" class="secondary-btn" disabled>🗑 Remove</button>
-                                    <button id="btn-clear-all" class="secondary-btn" disabled>Clear All</button>
-                                    <button id="ai-generate-cuts-btn" class="secondary-btn sparkle-btn" disabled>✨ AI Generate Cuts</button>
-                                </div>
-                                <button id="export-selected-btn" class="accent-btn" disabled>📥 Export Selected</button>
-                            </div>
-
-                            <div class="table-wrapper">
-                                <table class="clip-regions-table">
-                                    <thead>
-                                        <tr>
-                                            <th width="40px"><input type="checkbox" id="select-all-regions" checked></th>
-                                            <th width="50px">#</th>
-                                            <th>Label</th>
-                                            <th>Start Time</th>
-                                            <th>End Time</th>
-                                            <th>Duration</th>
-                                            <th width="120px">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="regions-list">
-                                        <tr class="empty-row">
-                                            <td colspan="7">No clipping regions defined. Click "+ Add Region" or use AI cuts to start.</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        <!-- Bookmarks Tab -->
-                        <div id="tab-bookmarks" class="tab-content">
-                            <div class="tab-actions-bar">
-                                <button id="add-bookmark-btn" class="secondary-btn" disabled>+ Add Bookmark</button>
-                            </div>
-                            <div class="bookmarks-grid" id="bookmarks-list">
-                                <p class="empty-text">No bookmarks added yet. Tag points of interest on the timeline.</p>
-                            </div>
-                        </div>
+                    <div class="meta-cell">
+                        <div class="meta-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11,5 6,9 2,9 2,15 6,15 11,19"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07M19.07 4.93a10 10 0 0 1 0 14.14"/></svg></div>
+                        <div><div class="meta-lbl">Audio</div><div class="meta-val" id="meta-audio-codec">—</div></div>
+                    </div>
+                    <div class="meta-cell">
+                        <div class="meta-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div>
+                        <div><div class="meta-lbl">File Size</div><div class="meta-val" id="meta-size">—</div></div>
                     </div>
                 </div>
             </div>
-</main>
+        </div>
 
+        <!-- Timeline -->
+        <div class="timeline-card">
+            <div class="timeline-topbar">
+                <div class="tl-left">
+                    <span class="section-label" style="margin:0">Timeline</span>
+                    <button id="btn-fit-screen" class="tl-btn" title="Fit to Screen">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+                        Fit
+                    </button>
+                    <div class="zoom-row">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" opacity="0.5"><circle cx="11" cy="11" r="8"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                        <input type="range" id="timeline-zoom" min="1" max="10" value="1">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" opacity="0.5"><circle cx="11" cy="11" r="8"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                    </div>
+                </div>
+                <div class="tl-range">
+                    <span>Start <strong id="range-start">00:00:00</strong></span>
+                    <span>End <strong id="range-end">00:00:00</strong></span>
+                    <span>Duration <strong id="range-duration">00:00:00</strong></span>
+                </div>
+            </div>
+            <div class="tl-scroll-wrap" id="timeline-scroll-wrapper">
+                <div class="tl-content" id="timeline-content">
+                    <canvas id="timeline-canvas" height="80"></canvas>
+                </div>
+            </div>
+            <div class="tl-controls-bar">
+                <div class="ctrl-group">
+                    <button id="btn-prev-frame-tl" class="ctrl-btn" title="Prev 1s" onclick="seekRelative(-1)">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="19,20 9,12 19,4"/><line x1="5" y1="19" x2="5" y2="5" stroke="currentColor" stroke-width="2"/></svg>
+                    </button>
+                    <button id="btn-play-pause-tl" class="ctrl-play-sm" onclick="togglePlayback()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+                    </button>
+                    <button id="btn-next-frame-tl" class="ctrl-btn" title="Next 1s" onclick="seekRelative(1)">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,20 15,12 5,4"/><line x1="19" y1="19" x2="19" y2="5" stroke="currentColor" stroke-width="2"/></svg>
+                    </button>
+                </div>
+                <div class="tl-time-display" id="tl-time-display">01:23:45 / 02:45:30</div>
+                <div class="tl-vol">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" opacity="0.6"><polygon points="11,5 6,9 2,9 2,15 6,15 11,19 11,5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                    <input type="range" id="tl-volume" min="0" max="100" value="100" class="vol-slider">
+                </div>
+            </div>
+        </div>
 
+        <!-- AI Smart Clips + Table -->
+        <div class="clips-card">
+            <div class="clips-header">
+                <div class="clips-header-left">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>
+                    <span>AI Smart Clips</span>
+                </div>
+                <div class="clips-header-right">
+                    <button class="btn-ai-generate" id="ai-generate-cuts-btn" disabled>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg>
+                        Generate AI Cuts
+                    </button>
+                    <button class="btn-toolbar" id="add-region-btn" disabled>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Add Region
+                    </button>
+                    <button class="btn-toolbar" id="add-bookmark-btn-alt" disabled>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        Add Marker
+                    </button>
+                    <button class="btn-toolbar" id="btn-remove-selected" disabled>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        Delete
+                    </button>
+                    <button class="btn-toolbar" id="btn-clear-all" disabled>Clear All</button>
+                    <div class="clips-search">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                        <input type="text" id="clips-search-input" placeholder="Search clips...">
+                    </div>
+                    <button class="btn-export-selected" id="export-selected-btn" disabled>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Export Selected
+                    </button>
+                </div>
+            </div>
+
+            <div class="tab-headers">
+                <button class="tab-header active" data-tab="tab-regions">Clipping Regions</button>
+                <button class="tab-header" data-tab="tab-bookmarks">Bookmarks</button>
+            </div>
+
+            <div class="tab-content active" id="tab-regions">
+                <div class="table-wrap">
+                    <table class="clips-table">
+                        <thead>
+                            <tr>
+                                <th width="36"><input type="checkbox" id="select-all-regions"></th>
+                                <th width="40">#</th>
+                                <th>Clip Name</th>
+                                <th>Start Time</th>
+                                <th>End Time</th>
+                                <th>Duration</th>
+                                <th width="110">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="regions-list">
+                            <tr class="empty-row">
+                                <td colspan="7">No clipping regions defined. Click "Generate AI Cuts" or "+ Add Region" to start.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="tab-content" id="tab-bookmarks">
+                <div class="bm-actions">
+                    <button class="btn-toolbar" id="add-bookmark-btn" disabled>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Add Bookmark
+                    </button>
+                </div>
+                <div class="bookmarks-grid" id="bookmarks-list">
+                    <p class="empty-text">No bookmarks added yet.</p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- RIGHT PANEL: Quick Actions -->
+    <aside class="right-panel">
+        <div class="section-label">QUICK ACTIONS</div>
+
+        <div class="quick-export-box">
+            <div class="field-label">Quick Export</div>
+            <div class="format-pills">
+                <button class="pill-btn active" data-fmt="mp4">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+                    MP4
+                </button>
+                <button class="pill-btn" data-fmt="mkv">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/></svg>
+                    MKV
+                </button>
+                <button class="pill-btn" data-fmt="audio">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11,5 6,9 2,9 2,15 6,15 11,19 11,5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                    Audio
+                </button>
+            </div>
+        </div>
+
+        <div class="panel-divider"></div>
+
+        <div class="rp-section">
+            <div class="field-label">Export Presets</div>
+            <div class="preset-list">
+                <button class="preset-btn" onclick="applyPreset('short')">
+                    <div class="preset-icon pr-red">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/></svg>
+                    </div>
+                    <div class="preset-meta">
+                        <span class="preset-name">Short (9:16)</span>
+                        <span class="preset-dim">1080×1920</span>
+                    </div>
+                </button>
+                <button class="preset-btn" onclick="applyPreset('reels')">
+                    <div class="preset-icon pr-pink">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10,8 16,12 10,16"/></svg>
+                    </div>
+                    <div class="preset-meta">
+                        <span class="preset-name">Reels (9:16)</span>
+                        <span class="preset-dim">1080×1920</span>
+                    </div>
+                </button>
+                <button class="preset-btn" onclick="applyPreset('tiktok')">
+                    <div class="preset-icon pr-teal">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5"/></svg>
+                    </div>
+                    <div class="preset-meta">
+                        <span class="preset-name">TikTok (9:16)</span>
+                        <span class="preset-dim">1080×1920</span>
+                    </div>
+                </button>
+                <button class="preset-btn" onclick="applyPreset('podcast')">
+                    <div class="preset-icon pr-purple">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v3M8 22h8"/></svg>
+                    </div>
+                    <div class="preset-meta">
+                        <span class="preset-name">Podcast (16:9)</span>
+                        <span class="preset-dim">1920×1080</span>
+                    </div>
+                </button>
+                <button class="preset-btn preset-custom" onclick="">
+                    <div class="preset-icon pr-grey">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    </div>
+                    <span class="preset-name">Custom Preset</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="panel-divider"></div>
+
+        <div class="rp-section">
+            <div class="field-label">Batch Actions</div>
+            <div class="batch-list">
+                <button class="batch-btn" onclick="exportSelectedClips()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Export All Clips
+                </button>
+                <button class="batch-btn" onclick="quickDownloadFull()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Download All
+                </button>
+            </div>
+        </div>
+    </aside>
+
+</div>
+
+<!-- STATUS BAR -->
+<footer class="statusbar">
+    <div class="status-dot-wrap">
+        <span class="status-dot"></span>
+        <span class="status-text" id="status-text">Ready</span>
     </div>
+    <div class="status-center" id="status-center"></div>
+    <div class="status-right">
+        <span id="status-storage">0 GB / 0 GB</span>
+    </div>
+</footer>
 
-    <!-- Load YouTube Iframe API -->
-    <script>
-        window.APP_CONFIG = "__APP_BOOT_CONFIG__";
-    </script>
-    <script src="https://www.youtube.com/iframe_api"></script>
-    <script src="app.js"></script>
+<!-- Scripts -->
+<script>
+    window.APP_CONFIG = "__APP_BOOT_CONFIG__";
+</script>
+<script src="https://www.youtube.com/iframe_api"></script>
+<script src="app.js"></script>
+
 </body>
 </html>

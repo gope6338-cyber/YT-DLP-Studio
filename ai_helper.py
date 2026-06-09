@@ -51,6 +51,12 @@ def call_hf_api(url, payload, token=None, retries=5, delay=5):
             if attempt == retries - 1:
                 raise e
             time.sleep(delay)
+        except urllib.error.URLError as e:
+            if attempt == retries - 1:
+                raise RuntimeError(
+                    "Failed to connect to Hugging Face Serverless API. Please verify your internet connection or check if the domain is blocked."
+                ) from e
+            time.sleep(delay)
         except Exception as e:
             if attempt == retries - 1:
                 raise e
@@ -107,6 +113,41 @@ def time_to_seconds(t_str):
     else:
         return float(parts[0])
 
+def clean_text_for_comparison(text):
+    text = text.lower()
+    text = re.sub(r'[^\w\s]', '', text)
+    return " ".join(text.split())
+
+def deduplicate_entries(entries):
+    if not entries:
+        return []
+    
+    cleaned = []
+    for entry in entries:
+        text = entry['text'].strip()
+        if not text:
+            continue
+            
+        if not cleaned:
+            cleaned.append(entry)
+            continue
+            
+        prev = cleaned[-1]
+        prev_text = prev['text'].strip()
+        
+        norm_text = clean_text_for_comparison(text)
+        norm_prev = clean_text_for_comparison(prev_text)
+        
+        if norm_text.startswith(norm_prev):
+            prev['text'] = text
+            prev['end'] = entry['end']
+        elif norm_prev.startswith(norm_text):
+            prev['end'] = max(prev['end'], entry['end'])
+        else:
+            cleaned.append(entry)
+            
+    return cleaned
+
 def parse_subtitles(file_path):
     """
     Parses VTT or SRT files into timestamped caption blocks.
@@ -155,7 +196,7 @@ def parse_subtitles(file_path):
                 'text': full_text
             })
             
-    return entries
+    return deduplicate_entries(entries)
 
 def download_subtitles(video_url):
     """
@@ -170,7 +211,7 @@ def download_subtitles(video_url):
     ydl_opts = {
         'writesubtitles': True,
         'writeautomaticsub': True,
-        'subtitleslangs': ['en'],
+        'subtitleslangs': ['en', 'en-.*', 'en-US', 'en-GB', 'en-CA'],
         'skip_download': True,
         'outtmpl': out_tmpl,
         'quiet': True,
@@ -187,6 +228,7 @@ def download_subtitles(video_url):
             return []
             
         # Select the best subtitle file (prefer manual over auto, srt/vtt)
+        subtitle_files.sort(key=lambda x: (not x.endswith('.vtt'), x))
         sub_file = subtitle_files[0]
         entries = parse_subtitles(sub_file)
         
@@ -336,6 +378,14 @@ def analyze_video(video_url):
         # High importance threshold
         if importance >= 0.4:
             important_chunks.append(chunk)
+            
+    # Fallback: if no chunks exceed the threshold, select the top-scoring chunks with highest importance
+    if not important_chunks and chunks:
+        sorted_chunks = sorted(chunks, key=lambda x: x['importance'], reverse=True)
+        fallback_count = max(1, min(3, len(chunks) // 5))
+        for c in sorted_chunks[:fallback_count]:
+            important_chunks.append(c)
+        important_chunks.sort(key=lambda x: x['id'])
             
     # Step 4: Create sections by merging adjacent important chunks
     sections = []

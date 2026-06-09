@@ -259,5 +259,58 @@ Second block of subtitles.
             os.remove(os.path.join(temp_cache_dir, f))
         os.rmdir(temp_cache_dir)
 
+    def test_deduplicate_entries(self):
+        from ai_helper import deduplicate_entries
+        entries = [
+            {"start": 0.0, "end": 2.0, "text": "Hello"},
+            {"start": 1.0, "end": 3.0, "text": "Hello world"},
+            {"start": 2.0, "end": 4.0, "text": "Hello world this"},
+            {"start": 5.0, "end": 7.0, "text": "Different sentence"}
+        ]
+        res = deduplicate_entries(entries)
+        self.assertEqual(len(res), 2)
+        self.assertEqual(res[0]["text"], "Hello world this")
+        self.assertEqual(res[0]["start"], 0.0)
+        self.assertEqual(res[0]["end"], 4.0)
+        self.assertEqual(res[1]["text"], "Different sentence")
+        self.assertEqual(res[1]["start"], 5.0)
+        self.assertEqual(res[1]["end"], 7.0)
+
+    @mock.patch("ai_helper.download_subtitles")
+    @mock.patch("ai_helper.call_hf_api")
+    @mock.patch("ai_helper.APP_CONFIG")
+    def test_analyze_video_threshold_fallback(self, mock_config, mock_call_api, mock_download):
+        from ai_helper import analyze_video
+        
+        mock_config.use_hf_inference_api = True
+        mock_config.hf_token = "tok"
+        mock_config.temp_dir = tempfile.gettempdir()
+        
+        temp_cache_dir = tempfile.mkdtemp()
+        
+        mock_download.return_value = [
+            {"start": 0.0, "end": 10.0, "text": "Intro segment."},
+            {"start": 10.0, "end": 20.0, "text": "Body segment."},
+            {"start": 20.0, "end": 30.0, "text": "Outro segment."}
+        ]
+        
+        mock_call_api.side_effect = [
+            [0.1, 0.2],
+            {"labels": ["highlight insight", "filler chat"], "scores": [0.1, 0.9]},
+            [{"summary_text": "Fallback summary"}]
+        ]
+        
+        with mock.patch("ai_helper.CACHE_DIR", temp_cache_dir):
+            res = analyze_video("https://youtube.com/watch?v=12345678902")
+            
+        self.assertIn("chunks", res)
+        self.assertIn("sections", res)
+        self.assertEqual(len(res["sections"]), 1)
+        self.assertEqual(res["sections"][0]["label"], "Fallback summary")
+        
+        for f in os.listdir(temp_cache_dir):
+            os.remove(os.path.join(temp_cache_dir, f))
+        os.rmdir(temp_cache_dir)
+
 if __name__ == '__main__':
     unittest.main()

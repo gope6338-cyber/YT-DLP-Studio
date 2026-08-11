@@ -298,9 +298,6 @@ def run_clip_export(task):
         cleanup_temp_files(temp_full_path, temp_dir)
         return False, str(e)
 
-def tempfile_temp_dir():
-    return APP_CONFIG.temp_dir
-
 def cleanup_temp_files(full_path, temp_dir):
     try:
         if os.path.exists(full_path):
@@ -387,18 +384,14 @@ def serve_static(path):
     return send_from_directory(STATIC_DIR, path)
 
 def format_upload_date(date_str):
+    # ponytail: stdlib datetime replaces manual 12-month array slice lookup
     if not date_str or len(date_str) != 8:
         return date_str
-    months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
     try:
-        yr = date_str[:4]
-        m_idx = int(date_str[4:6]) - 1
-        day = str(int(date_str[6:]))
-        if 0 <= m_idx < 12:
-            return f"{months[m_idx]} {day}, {yr}"
-    except Exception:
-        pass
-    return date_str
+        from datetime import datetime
+        return datetime.strptime(date_str, "%Y%m%d").strftime("%b %d, %Y")
+    except ValueError:
+        return date_str
 
 @app.route('/api/info', methods=['POST'])
 def get_info():

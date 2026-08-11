@@ -249,20 +249,12 @@ def download_subtitles(video_url):
         return []
 
 def extract_video_id(url):
-    """
-    Extracts video ID from standard YouTube URL.
-    """
-    # Handles v=ID, embed/ID, share links, etc.
-    patterns = [
-        r'(?:v=|\/embed\/|\/101\/|\/v\/|youtu\.be\/|\/shorts\/)([a-zA-Z0-9_-]{11})',
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, url)
-        if match:
-            return match.group(1)
-    # Default fallback: hash of the url
+    # ponytail: clean regex match with md5 fallback for non-standard URLs
+    match = re.search(r'(?:v=|\/embed\/|\/101\/|\/v\/|youtu\.be\/|\/shorts\/)([a-zA-Z0-9_-]{11})', url)
+    if match:
+        return match.group(1)
     import hashlib
-    return hashlib.md_str(url.encode('utf-8')).hexdigest() if hasattr(hashlib, 'md_str') else hashlib.md5(url.encode('utf-8')).hexdigest()
+    return hashlib.md5(url.encode('utf-8')).hexdigest()
 
 def chunk_transcript(entries, chunk_duration=60):
     chunks = []

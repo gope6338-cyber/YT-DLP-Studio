@@ -70,11 +70,14 @@ page and swaps the queue implementation automatically — same UI, same routes.
 
 ## Known limits (by design of the platform)
 
-- **Function duration**: configured at `60`s (the Hobby-plan maximum). If a
-  stream is cut off, the frontend automatically falls back to handing the
-  resolved media URL to the browser as a direct download. On the Pro plan you
-  can raise `maxDuration` in `vercel.json` up to 300s for large files on slow
-  connections.
+- **Function duration**: configured at `60`s in `vercel.json`, which is valid on
+  every plan. New projects have Fluid compute enabled by default, which allows
+  raising `maxDuration` (up to 300s on Hobby) if large-file streams get cut
+  off. If a stream is cut, the frontend automatically falls back to handing
+  the resolved media URL to the browser as a direct download.
+- **Function memory**: with Fluid compute (default for new projects), memory
+  cannot be set in `vercel.json` — configure it in Project → Settings →
+  Functions. The default (1024 MB) is what this app needs.
 - **Writable storage**: only `/tmp` (~512 MB), which is why the size caps
   above exist. Processed (merged/MP3/clip) requests must fit; plain streamed
   downloads pass through without touching disk.

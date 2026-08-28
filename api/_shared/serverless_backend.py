@@ -45,7 +45,12 @@ APP_CONFIG = create_app_config()
 apply_runtime_environment(APP_CONFIG)
 ensure_runtime_dirs(APP_CONFIG)
 
-STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+# Static UI is served by Vercel's CDN (outputDirectory). We only mount the
+# static routes when running the same app locally for development, where the
+# repo layout exists (this file then lives at api/_shared/).
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.dirname(os.path.dirname(_HERE))  # api/_shared -> api -> project root
+STATIC_DIR = os.path.join(_REPO_ROOT, "static") if os.path.isdir(os.path.join(_REPO_ROOT, "static")) else None
 
 # Serverless guard rails (override via env vars in Vercel project settings).
 MAX_MERGE_BYTES = int(os.environ.get("MAX_MERGE_BYTES", 400 * 1024 * 1024))   # processed (merged/mp3) downloads
@@ -337,25 +342,25 @@ def file_response(path, filename, mimetype, workdir=None):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Routes: UI + static
+# Routes: UI + static (local development only; Vercel serves static/ from CDN)
 # ─────────────────────────────────────────────────────────────────────────────
 
-@app.route('/')
-def index():
-    index_path = os.path.join(STATIC_DIR, "index.html")
-    with open(index_path, "r", encoding="utf-8") as handle:
-        html = handle.read()
-    boot_config = json.dumps({
-        "serverless": True,
-        "aiEnabled": bool(APP_CONFIG.use_hf_inference_api),
-        "defaultSaveDir": None,
-    })
-    return Response(html.replace('"__APP_BOOT_CONFIG__"', boot_config, 1), mimetype="text/html")
+if STATIC_DIR:
+    @app.route('/')
+    def index():
+        index_path = os.path.join(STATIC_DIR, "index.html")
+        with open(index_path, "r", encoding="utf-8") as handle:
+            html = handle.read()
+        boot_config = json.dumps({
+            "serverless": True,
+            "aiEnabled": bool(APP_CONFIG.use_hf_inference_api),
+            "defaultSaveDir": None,
+        })
+        return Response(html.replace('"__APP_BOOT_CONFIG__"', boot_config, 1), mimetype="text/html")
 
-
-@app.route('/<path:path>')
-def serve_static(path):
-    return send_from_directory(STATIC_DIR, path)
+    @app.route('/<path:path>')
+    def serve_static(path):
+        return send_from_directory(STATIC_DIR, path)
 
 
 @app.route('/api/health')

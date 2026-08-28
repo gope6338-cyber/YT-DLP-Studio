@@ -9,6 +9,13 @@ import subprocess
 import glob
 import tempfile
 import signal
+
+# Shared modules live in api/_shared (also bundled with the Vercel function).
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_SHARED = os.path.join(_HERE, "api", "_shared")
+if _SHARED not in sys.path:
+    sys.path.insert(0, _SHARED)
+
 from flask import Flask, request, jsonify, Response, send_from_directory
 from config import apply_runtime_environment, create_app_config, ensure_runtime_dirs
 from media_info import build_info_payload, clean_filename, extract_video_info, format_upload_date
@@ -375,6 +382,15 @@ threading.Thread(target=queue_worker, daemon=True).start()
 @app.route('/')
 def index():
     return Response(_render_index_with_config(), mimetype="text/html")
+
+@app.route('/api/health')
+def health():
+    return jsonify({
+        "ok": True,
+        "serverless": False,
+        "ai_enabled": True,
+        "ffmpeg": True,
+    })
 
 @app.route('/<path:path>')
 def serve_static(path):

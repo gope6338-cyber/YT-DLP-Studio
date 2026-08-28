@@ -1,10 +1,13 @@
 import os
+import sys
 import unittest
 import tempfile
 import time
 import subprocess
-import sys
 from unittest import mock
+
+# Shared modules live in api/_shared (app.py also adds this path itself)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "api", "_shared"))
 
 # Import functions to test
 from ai_helper import parse_subtitles, chunk_transcript, time_to_seconds

@@ -6,7 +6,7 @@
 - Kept all existing routes, payloads, queue semantics, SSE behavior, AI endpoints, and frontend workflows unchanged.
 - Replaced Windows-only process cancellation internals with cross-platform subprocess-group handling.
 - Added canonical container deployment files and platform configs for Render, Railway, Koyeb, and Vercel.
-- **Vercel is now a first-class target**: `api/index.py` + `serverless_backend.py` run the whole app as a serverless function (downloads stream to the browser; the queue runs client-side). See [VERCEL.md](VERCEL.md).
+- **Vercel is now a first-class target**: the Python function `api/index.py` (with all backend code in `api/_shared/`) runs the API, `static/` is served from the Vercel CDN, and downloads stream to the browser with a client-side queue. See [VERCEL.md](VERCEL.md).
 - Split Python dependencies: `requirements.txt` (serverless-safe core: Flask, yt-dlp, imageio-ffmpeg, gunicorn) and `requirements-full.txt` (local AI models: torch, transformers) — Vercel installs only the former.
 
 ## Why these changes were necessary

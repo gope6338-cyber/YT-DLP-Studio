@@ -1,19 +1,14 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "outputDirectory": "static",
   "functions": {
     "api/index.py": {
       "maxDuration": 60,
       "memory": 1024,
-      "includeFiles": [
-        "serverless_backend.py",
-        "media_info.py",
-        "config.py",
-        "ai_helper.py",
-        "static/**"
-      ]
+      "includeFiles": "api/_shared/**"
     }
   },
   "rewrites": [
-    { "source": "/(.*)", "destination": "/api/index" }
+    { "source": "/api/(.*)", "destination": "/api/index" }
   ]
 }

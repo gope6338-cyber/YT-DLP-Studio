@@ -73,19 +73,38 @@ const volumeSlider = document.getElementById('playback-volume-slider');
 const appConfig = (window.APP_CONFIG && typeof window.APP_CONFIG === 'object') ? window.APP_CONFIG : {};
 
 // Serverless (Vercel) mode: no persistent backend process, downloads are
-// streamed through the API straight into the browser.
-const isServerless = !!(appConfig && appConfig.serverless);
+// streamed through the API straight into the browser. The page may be served
+// from a CDN, so mode is detected at runtime via /api/health (falling back to
+// the boot config injected by the self-hosted server when present).
+let isServerless = false;
+let aiEnabledOnServer = (typeof appConfig.aiEnabled === 'boolean') ? appConfig.aiEnabled : null;
 
-// Set Default Save Directory on Load
-if (isServerless) {
-    saveDirInput.value = "Browser downloads";
-    saveDirInput.disabled = true;
-    saveDirInput.title = "On this deployment files are saved by your browser (Downloads folder or the location you pick).";
-    const browseBtn = document.querySelector('.dir-browse-btn');
-    if (browseBtn) browseBtn.disabled = true;
-} else {
-    saveDirInput.value = appConfig.defaultSaveDir || "C:\\Users\\LCS\\Downloads";
+function applyDeploymentMode() {
+    if (isServerless) {
+        saveDirInput.value = "Browser downloads";
+        saveDirInput.disabled = true;
+        saveDirInput.title = "On this deployment files are saved by your browser (Downloads folder or the location you pick).";
+        const browseBtn = document.querySelector('.dir-browse-btn');
+        if (browseBtn) browseBtn.disabled = true;
+    } else {
+        saveDirInput.value = appConfig.defaultSaveDir || "C:\\Users\\LCS\\Downloads";
+        startServerStream();
+    }
 }
+
+function detectDeployment() {
+    fetch('/api/health')
+        .then(res => (res.ok ? res.json() : null))
+        .then(data => {
+            if (data && data.ok) {
+                isServerless = !!data.serverless;
+                if (typeof data.ai_enabled === 'boolean') aiEnabledOnServer = data.ai_enabled;
+            }
+        })
+        .catch(() => {})
+        .then(applyDeploymentMode);
+}
+detectDeployment();
 
 // Event Listeners
 loadVideoBtn.addEventListener('click', loadVideoUrl);
@@ -169,7 +188,7 @@ function handleUrlInput() {
 
 // SSE Streaming for Queue (self-hosted backend only; Vercel runs a client-side queue)
 let lastVideoMeta = null;
-if (!isServerless) {
+function startServerStream() {
     const sse = new EventSource('/api/stream');
     sse.onmessage = function(event) {
         const msg = JSON.parse(event.data);
@@ -1121,6 +1140,11 @@ setStatusText('Ready');
 function generateCutsViaAI() {
     const url = videoUrlInput.value.trim();
     if (!url) return;
+
+    if (isServerless && aiEnabledOnServer === false) {
+        alert("AI Smart Clips are disabled on this deployment. On Vercel, set USE_HF_INFERENCE_API=true (and optionally HF_TOKEN) in Project → Settings → Environment Variables to enable them.");
+        return;
+    }
     
     aiGenerateCutsBtn.disabled = true;
     aiGenerateCutsBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Analyzing...`;

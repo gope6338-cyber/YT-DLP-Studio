@@ -1,8 +1,12 @@
 import io
 import os
+import sys
 import tempfile
 import unittest
 from unittest import mock
+
+# Shared modules live alongside the Vercel function (api/_shared)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "api", "_shared"))
 
 # Hermetic env before importing the serverless backend
 _TEST_ROOT = tempfile.mkdtemp(prefix="yts_serverless_test_")

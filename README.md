@@ -30,8 +30,11 @@ python app.py                              # http://127.0.0.1:5000
 
 ```sh
 pip install -r requirements.txt
-gunicorn --bind 0.0.0.0:8080 'api.index:app'
+gunicorn --bind 0.0.0.0:8080 --chdir api 'index:app'
 ```
+
+The Vercel function entrypoint is `api/index.py`; all backend code it needs
+lives in `api/_shared/` (only the `api/` tree is bundled on Vercel).
 
 ## Docker (full self-hosted stack, includes AI models)
 

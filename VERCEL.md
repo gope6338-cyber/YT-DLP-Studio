@@ -11,10 +11,31 @@ self-hosted server. No external backend is required.
    Output Directory empty — everything is configured by `vercel.json`.
 4. Click **Deploy**.
 
-That's it. `vercel.json` rewrites every route to the Python serverless
-function `api/index.py`, which serves the UI, the static assets, and the API.
-Dependencies come from `requirements.txt` (Flask + yt-dlp + imageio-ffmpeg,
-which bundles a static `ffmpeg` binary — Vercel has no system ffmpeg).
+That's it. Dependencies come from `requirements.txt` (Flask + yt-dlp +
+imageio-ffmpeg, which bundles a static `ffmpeg` binary — Vercel has no
+system ffmpeg).
+
+## How the deployment is wired
+
+```
+vercel.json          outputDirectory: static  → UI served from the CDN
+                     rewrite /api/(.*) → /api/index  → Python function
+api/index.py         the single serverless function (entrypoint)
+api/_shared/         all backend code, bundled with the function
+  serverless_backend.py   Flask app: /api/info, /api/resolve, /api/download,
+                          /api/clip, /api/ai/*, /api/health
+  media_info.py           shared yt-dlp metadata helpers
+  config.py / ai_helper.py  env config + AI (Inference API mode)
+static/              index.html / app.js / style.css (served statically)
+```
+
+Only the `api/` directory tree is bundled into the function — that is why
+the shared modules live in `api/_shared/` rather than the repo root (the
+Vercel Python runtime does not include root-level modules in the bundle).
+The underscore prefix keeps `_shared` from being detected as its own
+function. The page detects it's talking to the serverless backend at
+runtime via `GET /api/health` and switches the download queue to its
+client-side implementation.
 
 ## How the Vercel deployment differs from self-hosting
 
@@ -67,9 +88,10 @@ page and swaps the queue implementation automatically — same UI, same routes.
 
 ```sh
 pip install -r requirements.txt
-gunicorn --bind 0.0.0.0:8080 'api.index:app'
-# or: flask --app 'api.index:app' run --port 8080
+gunicorn --bind 0.0.0.0:8080 --chdir api 'index:app'
 ```
+
+(UI + API on one port for convenience; on Vercel the UI comes from the CDN.)
 
 ## Deploy from the CLI instead
 

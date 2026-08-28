@@ -1,6 +1,7 @@
---extra-index-url https://download.pytorch.org/whl/cpu
+# Dependencies installed on Vercel (serverless) and in the base self-host image.
+# Keep this list free of torch/transformers: the serverless function bundle has a
+# hard size limit. Heavy AI deps live in requirements-full.txt (self-host only).
 Flask==3.1.3
 gunicorn==23.0.0
-torch==2.11.0
-transformers==5.8.1
-yt-dlp==2026.3.17
+yt-dlp==2026.8.19
+imageio-ffmpeg==0.6.0

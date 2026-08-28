@@ -11,6 +11,7 @@ import tempfile
 import signal
 from flask import Flask, request, jsonify, Response, send_from_directory
 from config import apply_runtime_environment, create_app_config, ensure_runtime_dirs
+from media_info import build_info_payload, clean_filename, extract_video_info, format_upload_date
 
 app = Flask(__name__)
 
@@ -312,10 +313,6 @@ def cleanup_temp_files(full_path, temp_dir):
     except Exception:
         pass
 
-def clean_filename(name):
-    # Removes illegal characters for filenames
-    return re.sub(r'[\\/*?:"<>|]', "", name).strip()
-
 def queue_worker():
     global active_task
     while True:
@@ -383,89 +380,16 @@ def index():
 def serve_static(path):
     return send_from_directory(STATIC_DIR, path)
 
-def format_upload_date(date_str):
-    # ponytail: stdlib datetime replaces manual 12-month array slice lookup
-    if not date_str or len(date_str) != 8:
-        return date_str
-    try:
-        from datetime import datetime
-        return datetime.strptime(date_str, "%Y%m%d").strftime("%b %d, %Y")
-    except ValueError:
-        return date_str
-
 @app.route('/api/info', methods=['POST'])
 def get_info():
     data = request.json
     url = data.get('url')
     if not url:
         return jsonify({"error": "URL is required"}), 400
-        
+
     try:
-        # Extract metadata
-        import yt_dlp
-        ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
-        }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            
-        # Parse formats
-        formats = []
-        seen_resolutions = set()
-        
-        # Gather video resolutions
-        for f in info.get('formats', []):
-            if f.get('vcodec') != 'none' and f.get('acodec') == 'none':
-                res = f.get('resolution') or f"{f.get('height')}p"
-                if res not in seen_resolutions and f.get('height'):
-                    seen_resolutions.add(res)
-                    formats.append({
-                        'id': f['format_id'],
-                        'resolution': res,
-                        'ext': f.get('ext'),
-                        'fps': f.get('fps'),
-                        'note': f.get('format_note') or ''
-                    })
-                    
-        # Add basic formats
-        formats.sort(key=lambda x: int(re.sub(r'\D', '', x['resolution']) or 0), reverse=True)
-        
-        # Check if it has subtitles
-        subtitles_available = False
-        if info.get('subtitles') or info.get('automatic_captions'):
-            subtitles_available = True
-            
-        # Try to get filesize
-        filesize = info.get('filesize') or info.get('filesize_approx')
-        filesize_str = "N/A"
-        if filesize:
-            gb = filesize / (1024 * 1024 * 1024)
-            if gb >= 1.0:
-                filesize_str = f"{gb:.2f} GB"
-            else:
-                filesize_str = f"{filesize / (1024 * 1024):.2f} MB"
-                
-        # Get formats codecs
-        vcodec = info.get('vcodec') or 'N/A'
-        acodec = info.get('acodec') or 'N/A'
-        
-        result = {
-            'title': info.get('title'),
-            'duration': info.get('duration'),
-            'thumbnail': info.get('thumbnail'),
-            'formats': formats,
-            'subtitles_available': subtitles_available,
-            'default_save_dir': DEFAULT_SAVE_DIR,
-            'uploader': info.get('uploader') or info.get('channel') or 'N/A',
-            'upload_date': format_upload_date(info.get('upload_date')),
-            'resolution': f"{info.get('height')}p" if info.get('height') else "N/A",
-            'filesize': filesize_str,
-            'vcodec': vcodec,
-            'acodec': acodec,
-            'fps': info.get('fps') or 'N/A'
-        }
-        return jsonify(result)
+        info = extract_video_info(url)
+        return jsonify(build_info_payload(info, default_save_dir=DEFAULT_SAVE_DIR))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

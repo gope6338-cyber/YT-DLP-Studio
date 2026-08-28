@@ -15,9 +15,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg ca-certificates libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt ./
+COPY requirements.txt requirements-full.txt ./
 RUN python -m pip install --upgrade pip \
-    && python -m pip install -r requirements.txt
+    && python -m pip install -r requirements.txt -r requirements-full.txt
 
 COPY . .
 

@@ -72,8 +72,20 @@ const rangeDuration = document.getElementById('range-duration');
 const volumeSlider = document.getElementById('playback-volume-slider');
 const appConfig = (window.APP_CONFIG && typeof window.APP_CONFIG === 'object') ? window.APP_CONFIG : {};
 
+// Serverless (Vercel) mode: no persistent backend process, downloads are
+// streamed through the API straight into the browser.
+const isServerless = !!(appConfig && appConfig.serverless);
+
 // Set Default Save Directory on Load
-saveDirInput.value = appConfig.defaultSaveDir || "C:\\Users\\LCS\\Downloads";
+if (isServerless) {
+    saveDirInput.value = "Browser downloads";
+    saveDirInput.disabled = true;
+    saveDirInput.title = "On this deployment files are saved by your browser (Downloads folder or the location you pick).";
+    const browseBtn = document.querySelector('.dir-browse-btn');
+    if (browseBtn) browseBtn.disabled = true;
+} else {
+    saveDirInput.value = appConfig.defaultSaveDir || "C:\\Users\\LCS\\Downloads";
+}
 
 // Event Listeners
 loadVideoBtn.addEventListener('click', loadVideoUrl);
@@ -155,16 +167,19 @@ function handleUrlInput() {
     }
 }
 
-// SSE Streaming for Queue
-const sse = new EventSource('/api/stream');
-sse.onmessage = function(event) {
-    const msg = JSON.parse(event.data);
-    if (msg.type === 'init') {
-        renderQueue(msg.data);
-    } else if (msg.type === 'task_update') {
-        updateQueueItemUI(msg.data);
-    }
-};
+// SSE Streaming for Queue (self-hosted backend only; Vercel runs a client-side queue)
+let lastVideoMeta = null;
+if (!isServerless) {
+    const sse = new EventSource('/api/stream');
+    sse.onmessage = function(event) {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'init') {
+            renderQueue(msg.data);
+        } else if (msg.type === 'task_update') {
+            updateQueueItemUI(msg.data);
+        }
+    };
+}
 
 function renderQueue(tasks) {
     if (tasks.length === 0) {
@@ -228,13 +243,43 @@ function createQueueCard(task) {
     return div;
 }
 
+function refreshActiveQueueCount() {
+    const activeStatuses = ['pending', 'downloading', 'clipping'];
+    if (isServerless) {
+        const tasks = Object.values(clientTasks);
+        const activeCount = tasks.filter(t => activeStatuses.includes(t.status)).length;
+        document.getElementById('active-download-count').innerText = `${activeCount} active`;
+        document.getElementById('nav-queue-count').innerText = String(activeCount);
+        return;
+    }
+    fetch('/api/queue')
+        .then(res => res.json())
+        .then(tasks => {
+            const activeCount = (tasks || []).filter(t => activeStatuses.includes(t.status)).length;
+            document.getElementById('active-download-count').innerText = `${activeCount} active`;
+            document.getElementById('nav-queue-count').innerText = String(activeCount);
+        })
+        .catch(() => {});
+}
+
+function rerenderWholeQueue() {
+    if (isServerless) {
+        renderQueue(Object.values(clientTasks));
+        return;
+    }
+    fetch('/api/queue')
+        .then(res => res.json())
+        .then(renderQueue)
+        .catch(() => {});
+}
+
 function updateQueueItemUI(task) {
     if (task.status === 'removed') {
         const card = document.getElementById(`task-card-${task.id}`);
         if (card) card.remove();
-        fetch('/api/queue')
-            .then(res => res.json())
-            .then(renderQueue);
+        if (isServerless) delete clientTasks[task.id];
+        rerenderWholeQueue();
+        refreshActiveQueueCount();
         return;
     }
     const card = document.getElementById(`task-card-${task.id}`);
@@ -244,32 +289,30 @@ function updateQueueItemUI(task) {
         card.querySelector('.progress-text').innerText = `${pct}%`;
         card.querySelector('.speed-stat').innerText = task.speed || 'N/A';
         card.querySelector('.eta-stat').innerText = `ETA ${task.eta || 'N/A'}`;
-        
+
         const badge = card.querySelector('.status-badge');
         badge.className = `status-badge status-${task.status}`;
         badge.innerText = task.status;
-        
+
         const actionCol = card.querySelector('.action-col');
         if (!['pending', 'downloading', 'clipping'].includes(task.status)) {
             actionCol.innerHTML = `<button class="remove-btn icon-btn" onclick="removeTask('${task.id}')" title="Remove" style="padding:2px 6px;font-size:9px;background-color:transparent;color:var(--text-muted);border:1px solid var(--border-dark);">✖</button>`;
         }
-        
-        // Update active downloads count
-        fetch('/api/queue')
-            .then(res => res.json())
-            .then(tasks => {
-                const activeCount = tasks.filter(t => ['pending', 'downloading', 'clipping'].includes(t.status)).length;
-                document.getElementById('active-download-count').innerText = `${activeCount} active`;
-            });
+
+        refreshActiveQueueCount();
     } else {
         // Refresh entire list if it's a new task
-        fetch('/api/queue')
-            .then(res => res.json())
-            .then(renderQueue);
+        rerenderWholeQueue();
+        refreshActiveQueueCount();
     }
 }
 
 window.cancelTask = function(taskId) {
+    if (isServerless) {
+        const task = clientTasks[taskId];
+        if (task && task.abort) task.abort.abort();
+        return;
+    }
     fetch('/api/cancel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -278,6 +321,14 @@ window.cancelTask = function(taskId) {
 };
 
 window.removeTask = function(taskId) {
+    if (isServerless) {
+        delete clientTasks[taskId];
+        const card = document.getElementById(`task-card-${taskId}`);
+        if (card) card.remove();
+        rerenderWholeQueue();
+        refreshActiveQueueCount();
+        return;
+    }
     fetch('/api/remove', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -439,7 +490,10 @@ function loadVideoUrl() {
         }
         
         activeVideoTitle.innerText = data.title;
-        saveDirInput.value = data.default_save_dir;
+        lastVideoMeta = data;
+        if (!isServerless && data.default_save_dir) {
+            saveDirInput.value = data.default_save_dir;
+        }
         
         // Populate metadata panel
         metaChannel.innerText = data.uploader || 'N/A';
@@ -930,10 +984,22 @@ window.deleteBookmark = function(idx) {
 function quickDownloadFull() {
     const url = videoUrlInput.value.trim();
     if (!url) return;
-    
-    const saveDir = saveDirInput.value.trim();
+
     const format = formatPresetSelect.value;
     const title = activeVideoTitle.innerText;
+
+    if (isServerless) {
+        const task = addClientTask({
+            title: title,
+            type: 'download',
+            format: format,
+            thumbnail: lastVideoMeta && lastVideoMeta.thumbnail
+        });
+        enqueueClientJob(() => runClientDownload(task, { url, format }));
+        return;
+    }
+
+    const saveDir = saveDirInput.value.trim();
     
     fetch('/api/enqueue', {
         method: 'POST',
@@ -957,15 +1023,35 @@ function quickDownloadFull() {
 function exportSelectedClips() {
     const url = videoUrlInput.value.trim();
     if (!url) return;
-    
+
     const enabledClips = clipRegions.filter(r => r.enabled);
     if (enabledClips.length === 0) {
         alert("Please define and enable at least one clipping region first.");
         return;
     }
-    
-    const saveDir = saveDirInput.value.trim();
+
     const title = activeVideoTitle.innerText;
+
+    if (isServerless) {
+        enabledClips.forEach((region, i) => {
+            const task = addClientTask({
+                title: `${region.label || `Segment ${i + 1}`}`,
+                type: 'clip',
+                format: 'MP4',
+                thumbnail: lastVideoMeta && lastVideoMeta.thumbnail
+            });
+            enqueueClientJob(() => runClientClip(task, {
+                url,
+                start: region.start,
+                end: region.end,
+                label: region.label || `segment_${i + 1}`,
+                title: title
+            }));
+        });
+        return;
+    }
+
+    const saveDir = saveDirInput.value.trim();
     
     fetch('/api/clip', {
         method: 'POST',
@@ -1087,4 +1173,286 @@ function generateCutsViaAI() {
         aiGenerateCutsBtn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/></svg> Generate AI Cuts`;
         alert("AI Service is temporarily unavailable.");
     });
+}
+
+// ─── Serverless (Vercel) Client-Side Queue ─────────────────────────────────
+// On the serverless deployment there is no persistent backend process, so the
+// download queue lives in the browser: we ask the API to resolve/prepare the
+// media, stream it through the function with fetch() (real progress + cancel),
+// and save it locally via the File System Access API (or a Blob fallback).
+
+const clientTasks = {};
+let clientTaskSeq = 0;
+let clientJobChain = Promise.resolve();
+
+function enqueueClientJob(runner) {
+    clientJobChain = clientJobChain.then(runner).catch(err => {
+        console.warn('Client queue job failed:', err);
+    });
+}
+
+function addClientTask(partial) {
+    const id = `web_${Date.now()}_${++clientTaskSeq}`;
+    const task = {
+        id: id,
+        title: partial.title || 'Video',
+        type: partial.type || 'download',
+        format: partial.format || 'mp4',
+        status: 'pending',
+        progress: 0.0,
+        speed: 'N/A',
+        eta: 'pending...',
+        error: null,
+        thumbnail: partial.thumbnail || '',
+        abort: null
+    };
+    clientTasks[id] = task;
+    rerenderWholeQueue();
+    refreshActiveQueueCount();
+    return task;
+}
+
+function updateClientTask(task) {
+    if (!clientTasks[task.id]) return;
+    clientTasks[task.id] = task;
+    updateQueueItemUI(task);
+}
+
+function fmtBytes(n) {
+    if (!n || n < 0) return '0 MB';
+    if (n >= 1024 * 1024 * 1024) return (n / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+    if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
+    return (n / 1024).toFixed(0) + ' KB';
+}
+
+function fmtEta(seconds) {
+    if (!isFinite(seconds) || seconds < 0) return '…';
+    const s = Math.round(seconds);
+    const m = Math.floor(s / 60);
+    const h = Math.floor(m / 60);
+    const mm = String(m % 60).padStart(2, '0');
+    const ss = String(s % 60).padStart(2, '0');
+    return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+function triggerDirectDownload(url, filename) {
+    const a = document.createElement('a');
+    a.href = url;
+    if (filename) a.download = filename; // ignored cross-origin, still set for same-origin
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+}
+
+// Stream a fetch Response to disk (File System Access API) or Blob fallback.
+async function saveResponseToDisk(resp, filename, onProgress, signal) {
+    const total = parseInt(resp.headers.get('Content-Length') || '0', 10) || 0;
+    const reader = resp.body.getReader();
+    const t0 = performance.now();
+    let loaded = 0;
+    let lastUiTick = 0;
+    let writable = null;
+    const chunks = [];
+
+    if (window.showSaveFilePicker) {
+        try {
+            const handle = await window.showSaveFilePicker({ suggestedName: filename });
+            writable = await handle.createWritable();
+        } catch (e) {
+            if (e && e.name === 'AbortError') throw e;
+            writable = null; // no user gesture / unsupported → blob fallback
+        }
+    }
+
+    if (!writable && total > 600 * 1024 * 1024) {
+        throw new Error('File too large to buffer in memory without a save dialog; use the direct download link.');
+    }
+
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            loaded += value.length;
+            if (writable) {
+                await writable.write(value);
+            } else {
+                chunks.push(value);
+            }
+            const now = performance.now();
+            if (now - lastUiTick > 250) {
+                lastUiTick = now;
+                const secs = (now - t0) / 1000;
+                const bps = loaded / Math.max(secs, 0.001);
+                onProgress(
+                    loaded,
+                    total,
+                    fmtBytes(bps) + '/s',
+                    total && bps ? fmtEta((total - loaded) / bps) : '…'
+                );
+            }
+        }
+        if (writable) {
+            await writable.close();
+        } else {
+            const blob = new Blob(chunks);
+            const objectUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = objectUrl;
+            a.download = filename || 'download';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
+        }
+        onProgress(loaded, total || loaded, 'N/A', '00:00');
+    } catch (e) {
+        if (writable) { try { writable.close(); } catch (_) {} }
+        throw e;
+    }
+}
+
+async function runClientDownload(task, opts) {
+    const controller = new AbortController();
+    task.abort = controller;
+    task.status = 'downloading';
+    task.progress = 0;
+    task.eta = 'resolving…';
+    updateClientTask(task);
+    setStatusText(`Resolving "${task.title}"…`, 'busy');
+
+    let meta = null;
+    try {
+        const res = await fetch('/api/resolve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: opts.url, format: opts.format })
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        meta = data;
+        if (task.title === 'Video' || task.title === 'No Video Loaded') task.title = meta.title || task.title;
+        task.eta = meta.needs_processing ? 'processing on server…' : 'starting…';
+        updateClientTask(task);
+        setStatusText(`Downloading "${meta.filename}"…`, 'busy');
+
+        const dlUrl = meta.proxy_url + '&filename=' + encodeURIComponent(meta.filename);
+        const resp = await fetch(dlUrl, { signal: controller.signal });
+        if (!resp.ok) {
+            let msg = `HTTP ${resp.status}`;
+            try { const err = await resp.json(); if (err && err.error) msg = err.error; } catch (_) {}
+            throw new Error(msg);
+        }
+
+        await saveResponseToDisk(resp, meta.filename, (loaded, total, speed, eta) => {
+            task.progress = total ? Math.min(99.9, (loaded / total) * 100) : Math.min(95, task.progress + 0.5);
+            task.speed = speed;
+            task.eta = eta;
+            updateClientTask(task);
+        }, controller.signal);
+
+        task.status = 'completed';
+        task.progress = 100;
+        task.speed = 'N/A';
+        task.eta = '00:00';
+        updateClientTask(task);
+        setStatusText(`Saved ${meta.filename}`, 'ok');
+    } catch (err) {
+        if (controller.signal.aborted) {
+            task.status = 'cancelled';
+            task.eta = 'cancelled';
+            setStatusText('Download cancelled', 'error');
+        } else if (meta && meta.direct_url) {
+            // Proxy path failed (e.g. function time limit) — hand off to a
+            // direct browser download from the resolved media URL.
+            triggerDirectDownload(meta.direct_url, meta.filename);
+            task.status = 'completed';
+            task.progress = 100;
+            task.eta = 'browser direct';
+            setStatusText('Handed off to browser direct download…', 'busy');
+        } else {
+            const msg = String(err.message || err);
+            task.status = 'failed';
+            task.error = /Failed to fetch|NetworkError|network/i.test(msg)
+                ? 'Connection to the server cut off (likely the function time/size limit). Try a smaller format, or use the self-hosted deployment for very large files.'
+                : msg;
+            setStatusText(`Download failed: ${task.error}`, 'error');
+        }
+        updateClientTask(task);
+    }
+}
+
+async function runClientClip(task, opts) {
+    const controller = new AbortController();
+    task.abort = controller;
+    task.status = 'downloading';
+    task.progress = 0;
+    task.eta = 'processing on server…';
+    updateClientTask(task);
+    setStatusText(`Cutting clip "${task.title}"…`, 'busy');
+
+    // Server cuts the section first (yt-dlp --download-sections + ffmpeg);
+    // show slow crawl progress while that happens.
+    const pseudoTicker = setInterval(() => {
+        if (task.status !== 'downloading') return;
+        task.progress = Math.min(85, (task.progress || 0) + 0.6);
+        task.speed = 'cutting…';
+        updateClientTask(task);
+    }, 900);
+
+    try {
+        const params = new URLSearchParams({
+            url: opts.url,
+            start: String(opts.start),
+            end: String(opts.end),
+            label: opts.label || 'clip',
+            title: opts.title || 'video'
+        });
+        const resp = await fetch('/api/clip?' + params.toString(), { signal: controller.signal });
+        if (!resp.ok) {
+            let msg = `HTTP ${resp.status}`;
+            try { const err = await resp.json(); if (err && err.error) msg = err.error; } catch (_) {}
+            throw new Error(msg);
+        }
+
+        clearInterval(pseudoTicker);
+        task.progress = 86;
+        task.eta = 'transferring…';
+        updateClientTask(task);
+
+        let filename = `${(opts.title || 'video').replace(/[\\/:*?"<>|]/g, '').trim()}_${(opts.label || 'clip').replace(/[\\/:*?"<>|]/g, '').trim()}.mp4`;
+        const cd = resp.headers.get('Content-Disposition') || '';
+        const utf8Match = cd.match(/filename\*=UTF-8''([^;]+)/);
+        const asciiMatch = cd.match(/filename="([^"]+)"/);
+        if (utf8Match) {
+            try { filename = decodeURIComponent(utf8Match[1]); } catch (_) {}
+        } else if (asciiMatch) {
+            filename = asciiMatch[1];
+        }
+
+        await saveResponseToDisk(resp, filename, (loaded, total, speed, eta) => {
+            task.progress = 86 + Math.min(13.9, total ? (loaded / total) * 13.9 : 8);
+            task.speed = speed;
+            task.eta = eta;
+            updateClientTask(task);
+        }, controller.signal);
+
+        task.status = 'completed';
+        task.progress = 100;
+        task.speed = 'N/A';
+        task.eta = '00:00';
+        updateClientTask(task);
+        setStatusText(`Saved ${filename}`, 'ok');
+    } catch (err) {
+        clearInterval(pseudoTicker);
+        if (controller.signal.aborted) {
+            task.status = 'cancelled';
+            task.eta = 'cancelled';
+            setStatusText('Clip cancelled', 'error');
+        } else {
+            task.status = 'failed';
+            task.error = String(err.message || err);
+            setStatusText(`Clip failed: ${task.error}`, 'error');
+        }
+        updateClientTask(task);
+    }
 }

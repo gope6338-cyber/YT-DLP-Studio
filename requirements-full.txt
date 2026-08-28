@@ -1,0 +1,6 @@
+# Extra dependencies for the self-hosted (Docker/gunicorn) deployment, which
+# runs the AI pipelines locally instead of via the Hugging Face Inference API.
+# NOT installed on Vercel — torch would exceed the serverless bundle limit.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.11.0
+transformers==5.8.1

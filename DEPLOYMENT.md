@@ -1,56 +1,107 @@
-# Calm Lovelace Deployment Guide
+# YT-DLP Studio — Deployment Guide
 
-## What changed
+## Runtime shape
 
-- Added env-driven runtime configuration for host, port, save path, cache path, temp path, and binary locations.
-- Kept all existing routes, payloads, queue semantics, SSE behavior, AI endpoints, and frontend workflows unchanged.
-- Replaced Windows-only process cancellation internals with cross-platform subprocess-group handling.
-- Added canonical container deployment files and platform configs for Render, Railway, Koyeb, and Vercel.
-- Reduced `requirements.txt` to direct runtime dependencies actually used by this project.
+The application keeps its queue, task table and SSE listeners in process memory,
+so it must run as **a single process with a single worker**. Horizontal scaling
+(several replicas) is not supported: each replica would have its own queue, and
+a browser talking to replica B would never see jobs created on replica A.
 
-## Why these changes were necessary
+| Requirement | Why |
+|---|---|
+| 1 process, 1 gunicorn worker | queue/tasks/SSE state is in-process |
+| `ffmpeg` on PATH | merging streams and cutting clips |
+| Persistent storage for `DEFAULT_SAVE_DIR` | downloads and clips must survive restarts |
+| Persistent storage for `APP_CACHE_DIR` | analysis cache + Hugging Face model weights |
+| Enough RAM for the AI models | `bart-large` needs ~1.5 GB resident when loaded |
 
-- Hosted platforms cannot rely on `C:\Users\...` paths, so save/cache/temp directories must come from environment variables.
-- Linux hosts need `ffmpeg`, a portable startup command, and non-Windows process-group handling.
-- The in-memory queue and SSE stream require a single app process, so the runtime contract is now explicit.
-- Free serverless and scale-to-zero platforms can break long-running downloads, persistent output files, and large AI inference memory usage; platform docs below call out those limits instead of degrading features.
+## Build and run
 
-## Build and start commands
+```bash
+# Local development (loopback, no auth)
+python app.py
 
-- Local Flask dev: `python app.py`
-- Local production-like: `sh ./start.sh`
-- Docker build: `docker build -t calm-lovelace .`
-- Docker run: `docker run --rm -p 8000:8000 --env-file .env -v calm_lovelace_data:/data calm-lovelace`
+# Local, production-like
+sh ./start.sh
 
-## Environment variables
+# Docker
+docker build -t yt-dlp-studio .
+docker run --rm -p 8000:8000 \
+  --env-file .env \
+  -v ytdlp_data:/data \
+  yt-dlp-studio
+```
 
-- `HOST`: bind address. Local default `127.0.0.1`.
-- `PORT`: listening port. Local default `5000`.
-- `DEFAULT_SAVE_DIR`: persistent output directory shown in UI and used for downloads/clips.
-- `APP_CACHE_DIR`: app cache root, including AI transcript cache.
-- `APP_TEMP_DIR`: temp working directory for clip assembly.
-- `YT_DLP_BIN`: `yt-dlp` executable path.
-- `FFMPEG_BIN`: `ffmpeg` executable path.
-- `HF_HOME`, `HF_HUB_CACHE`, `TRANSFORMERS_CACHE`: optional model cache overrides.
-- `USE_HF_INFERENCE_API`: set to `true` to enable Hugging Face Serverless Inference API fallback (instead of running heavy models locally). Highly recommended for free-tier deployments (512MB RAM) to avoid OOM crashes. Default `false` (runs locally).
-- `HF_TOKEN` (or `HF_API_KEY`): optional Hugging Face API token to avoid rate limits when using the Inference API.
+`start.sh` intentionally uses the **gevent** worker. The UI keeps a server sent
+event stream open for as long as a tab is open; the threaded worker class runs
+out of threads (measured: the whole app stops responding at four open tabs),
+whereas an idle stream costs nothing under gevent.
 
-## Platform matrix
+## Security
 
-- `Railway Free/Trial`: deployable with `railway.json` + `Dockerfile`, but not full-fidelity on free resources because current AI path and persistent output needs exceed practical free-tier RAM/storage guarantees.
-- `Render Free`: deployable with `render.yaml`, but not full-fidelity because Free web services spin down and do not support persistent disks.
-- `Koyeb Free`: deployable template via `koyeb.yaml`, but not full-fidelity because Free instances have 512MB RAM, 2GB SSD, no volumes, and scale to zero.
-- `Vercel`: proxy-only frontend deployment through `vercel.json`; must point `/api/*` to a separate full backend. Vercel alone is not full-fidelity for this app.
-- `Docker-compatible hosts`: full-fidelity if they allow one always-on container, persistent mounted storage, and enough RAM for the current AI models.
+The app has **no authentication by default** — that is only safe on loopback.
 
-## Vercel note
+Set `APP_TOKEN` before exposing it to any network:
 
-- Replace `https://replace-with-full-backend.example.com` in `vercel.json` before deploying.
-- This keeps the same browser routes and UI while forwarding API and SSE traffic to the real backend.
+```bash
+APP_TOKEN=$(openssl rand -hex 32)
+```
 
-## Required runtime shape for full fidelity
+With a token configured:
 
-- Single replica / single process web service.
-- Persistent mounted storage for `DEFAULT_SAVE_DIR`, `APP_CACHE_DIR`, and `APP_TEMP_DIR`.
-- `ffmpeg` installed in the runtime image.
-- Enough RAM for `torch` + `transformers` pipelines used by `ai_helper.py`.
+* every page and `/api/*` route requires a signed-in session;
+* the token is entered once on `/login` and stored in an httpOnly cookie;
+* scripts can send `X-App-Token: <token>` instead of using a session;
+* behind HTTPS also set `SESSION_COOKIE_SECURE=true`.
+
+Independently of the token, **downloads are constrained to `DEFAULT_SAVE_DIR`**
+(plus any paths in `EXTRA_SAVE_DIRS`). A request with a `save_dir` outside those
+roots is rejected with HTTP 400. This is enforced in `config.resolve_save_dir`
+and covered by tests.
+
+## Storage
+
+| Variable | Purpose |
+|---|---|
+| `DEFAULT_SAVE_DIR` | downloads and exported clips |
+| `APP_CACHE_DIR` | analysis cache and model weights |
+| `APP_TEMP_DIR` | scratch space while a clip is being cut |
+| `EXTRA_SAVE_DIRS` | extra allowed output roots, `:`-separated |
+
+The container runs as the non-root `app` user. `/data` is created and chowned in
+the image so a fresh named volume inherits the right ownership; if you bind
+mount a host directory instead, make sure it is writable by uid 10001.
+
+## Memory and the AI path
+
+Running the models locally needs roughly 1.5 GB on top of the interpreter. If
+your host cannot provide that, either:
+
+* set `USE_HF_INFERENCE_API=true` to call the Hugging Face serverless API
+  instead (add `HF_TOKEN` to avoid rate limits), or
+* keep `AI_IDLE_UNLOAD_SECONDS` at its default so models are freed after 15
+  minutes of inactivity and reloaded on demand.
+
+Hosts that scale to zero (Render Free, Koyeb Free) will also lose the model
+weights and the in-memory queue between requests, and do not offer persistent
+disks. Use a host with an always-on process and a mounted volume.
+
+## Reverse proxy
+
+If you terminate TLS in front of the app, forward the `Host` header and allow
+streaming responses without buffering, otherwise SSE updates arrive late:
+
+```nginx
+location / {
+    proxy_pass         http://127.0.0.1:8000;
+    proxy_set_header   Host $host;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+    proxy_buffering    off;   # required for /api/stream
+    proxy_read_timeout 3600s;
+}
+```
+
+## Health check
+
+`GET /api/health` returns `{"status": "ok", "tasks": {...}}` and needs no
+authentication — point your platform's health probe at it.

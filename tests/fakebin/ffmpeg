@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+"""Offline stand-in for ffmpeg: writes a small output file.
+
+Behaviour is driven by the output filename so one fixture can cover several
+paths:
+  * label contains NOISY    -> emit >64KiB on stderr (the old code deadlocked
+                               on this: `wait()` with two undrained pipes)
+  * label contains FAILCLIP -> exit non-zero
+"""
+import os
+import sys
+
+args = sys.argv[1:]
+output = args[-1] if args else None
+
+if output and "FAILCLIP" in output:
+    sys.stderr.write("fake ffmpeg failure: unable to encode\n")
+    sys.exit(1)
+
+if output and "NOISY" in output:
+    sys.stderr.write("E" * 200000)
+    sys.stderr.flush()
+
+if output:
+    with open(output, "wb") as fh:
+        fh.write(b"\x00" * 1024)
+
+sys.stderr.write("frame=1\n")
+sys.exit(0)

@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""Offline stand-in for yt-dlp, used to exercise the app without network access.
+
+Supports just enough of the CLI for the download/clip paths:
+  -o <template>        write a small file at the resolved template
+  --get-title          print a title
+  <url>                anything else is ignored
+Progress lines are emitted with --newline so the app's parser sees them.
+"""
+import os
+import sys
+import time
+
+args = sys.argv[1:]
+
+if "--get-title" in args:
+    print("Fake Video Title")
+    sys.exit(0)
+
+output = None
+skip_next = False
+for i, a in enumerate(args):
+    if skip_next:
+        skip_next = False
+        continue
+    if a == "-o":
+        output = args[i + 1]
+        skip_next = True
+
+if output is None:
+    sys.exit(0)
+
+# Resolve the minimal template syntax the app uses.
+name = os.path.basename(output)
+name = name.replace("%(title)s", "Fake Video")
+name = name.replace("%(ext)s", "mp4")
+target = os.path.join(os.path.dirname(output), name)
+
+os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
+print(f"[download] Destination: {target}")
+for pct in (0, 25, 50, 75, 100):
+    print(f"[download] {pct}.0% of 10.00MiB at 1.50MiB/s ETA 00:0{pct % 10}")
+    sys.stdout.flush()
+    time.sleep(0.02)
+
+with open(target, "wb") as fh:
+    fh.write(b"\x00" * 2048)
+
+if "--merge-output-format" in args or "+ba" in " ".join(args):
+    print(f'[Merger] Merging formats into "{target}"')
+
+print("[download] 100% of 10.00MiB in 00:01")
+sys.exit(0)

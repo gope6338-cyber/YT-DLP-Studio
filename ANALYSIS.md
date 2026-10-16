@@ -1,5 +1,11 @@
 # YT-DLP Studio — Codebase Analysis
 
+> **Status: superseded.** Every finding below was addressed in the branch that
+> follows this commit (`fix: secure, stabilise and rebuild the transcript ->
+> analyse -> clip pipeline`). See `README.md` for the current architecture and
+> `DEPLOYMENT.md` for running it. This document is kept as the record of what
+> was wrong and why each change was made.
+
 **Date:** 2026-10-16
 **Scope:** full repository at commit `47b9f4a` (branch `arena/7ef6b894-yt-dlp-studio`)
 **Size:** 17 files, ~5,900 lines (~2,900 Python, ~2,400 frontend, ~600 config/docs)

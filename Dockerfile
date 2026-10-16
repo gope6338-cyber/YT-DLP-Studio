@@ -21,6 +21,15 @@ RUN python -m pip install --upgrade pip \
 
 COPY . .
 
+# Persistent state lives under /data, which should be a mounted volume.
+# Creating and chowning it here means a fresh named volume inherits these
+# permissions, so the app can keep running as a non-root user.
+RUN useradd --create-home --uid 10001 app \
+    && mkdir -p /data/downloads /data/cache /data/tmp \
+    && chown -R app:app /data /app
+
+USER app
+
 EXPOSE 8000
 
 CMD ["sh", "./start.sh"]
